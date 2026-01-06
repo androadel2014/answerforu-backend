@@ -48,14 +48,13 @@ const SQL_LOG = true;
 function isAllowedOrigin(origin) {
   if (!origin) return true;
 
-  const ALLOWED = (process.env.CORS_ORIGINS || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const allow = ["https://answerforu.com", "https://www.answerforu.com"];
 
-  if (ALLOWED.includes(origin)) return true;
+  // لو عندك دومين فرونت تاني مؤقت/ستيجينج ضيفه هنا
+  // allow.push("https://staging.answerforu.com");
 
   return (
+    allow.includes(origin) ||
     /^http:\/\/localhost:\d+$/.test(origin) ||
     /^http:\/\/127\.0\.0\.1:\d+$/.test(origin)
   );
@@ -70,7 +69,7 @@ app.use((req, res, next) => {
 
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization"
+      "Content-Type, Authorization, Accept"
     );
     res.setHeader(
       "Access-Control-Allow-Methods",
