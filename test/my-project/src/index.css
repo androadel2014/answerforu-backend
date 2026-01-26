@@ -1,0 +1,201 @@
+@import "tailwindcss";
+
+/* =========================================
+   Base resets
+========================================= */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: #e2e8f0;
+    border-style: solid;
+    border-width: 0;
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: "Cairo", sans-serif;
+    background-color: #f8fafc;
+    color: #0f172a;
+    overflow-x: hidden; /* ✅ مهم للموبايل */
+  }
+
+  /* ✅ safe-area for iOS */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* =========================================
+   Helpers (mobile / UI)
+========================================= */
+.glass-nav {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* =========================================
+   CV Builder: isolated styles (only #cv-document)
+========================================= */
+#cv-document {
+  width: 100%;
+  max-width: 800px;
+  font-family: "Times New Roman", Times, serif;
+  color: #000;
+  line-height: 1.25;
+  background: #fff;
+  padding: 20px;
+  width: 8.5in;
+  min-height: 11in;
+  margin: 0 auto;
+  direction: ltr;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+#cv-document .header-name {
+  font-size: 28pt;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 4pt;
+  text-transform: capitalize;
+  line-height: 1.2;
+  margin-top: 10px;
+}
+
+#cv-document .contact-info {
+  font-weight: normal;
+  text-align: center;
+  font-size: 13pt;
+  background-color: #e2e8f0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 30pt;
+  padding: 0;
+  line-height: 1;
+  width: 100%;
+}
+
+#cv-document .section-title {
+  font-size: 14pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  margin-top: 10pt;
+  margin-bottom: 8pt;
+  padding: 10px;
+  background-color: #f1f5f9;
+  border-bottom: 1px solid #ddd;
+}
+
+#cv-document .row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-weight: bold;
+  margin-top: 8pt;
+  font-size: 12pt;
+}
+
+#cv-document .row-subheader {
+  font-style: italic;
+  font-weight: normal;
+  margin-bottom: 2pt;
+  font-size: 12pt;
+}
+
+#cv-document ul {
+  list-style-type: disc;
+  margin-left: 25px;
+  margin-top: 2pt;
+  margin-bottom: 0;
+}
+
+#cv-document li {
+  margin-bottom: 3pt;
+  padding-left: 2px;
+  font-size: 12pt;
+}
+
+#cv-document p,
+#cv-document div {
+  font-size: 12pt;
+}
+
+/* Skills Grid */
+#cv-document .skills-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 40px;
+  row-gap: 4px;
+  margin-top: 4px;
+}
+#cv-document .skill-item {
+  display: flex;
+  align-items: center;
+  font-size: 12pt;
+}
+#cv-document .skill-dot {
+  height: 6px;
+  width: 6px;
+  background-color: #000;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+@media print {
+  #cv-document .contact-info,
+  #cv-document .section-title {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+@media (min-width: 1024px) {
+  #cv-document {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 15mm 20mm;
+  }
+}
+
+/* src/App.css */
+#root {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  text-align: initial;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+}
