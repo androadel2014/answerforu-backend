@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Newcomer Guide - دليلك في أمريكا</title>
+
+    <script>
+      window.onerror = function (msg, url, line, col, error) {
+        var debugDiv = document.getElementById("debug-error");
+        if (debugDiv) {
+          debugDiv.style.display = "block";
+          debugDiv.innerHTML =
+            "<strong>حدث خطأ تقني:</strong><br>" +
+            msg +
+            "<br><small>Line: " +
+            line +
+            "</small>";
+        }
+        return false;
+      };
+    </script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0?dev",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?dev",
+          "lucide-react": "https://esm.sh/lucide-react@0.344.0?external=react,react-dom"
+        }
+      }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://unpkg.com/docx@7.1.0/build/index.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap");
+      body {
+        font-family: "Cairo", sans-serif;
+        background-color: #f8fafc;
+      }
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 5px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 10px;
+      }
+      #debug-error {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        padding: 20px;
+        background: #fee2e2;
+        color: #991b1b;
+        border-bottom: 2px solid #b91c1c;
+        z-index: 9999;
+        font-family: monospace;
+        direction: ltr;
+        text-align: left;
+      }
+
+      /* Glassmorphism & Patterns */
+      .glass-nav {
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border-top: 1px solid rgba(255, 255, 255, 0.5);
+        box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.05);
+      }
+      .bg-pattern {
+        background-color: #f8fafc;
+        background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+        background-size: 24px 24px;
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      @keyframes float {
+        0% {
+          transform: translateY(0px);
+        }
+        50% {
+          transform: translateY(-10px);
+        }
+        100% {
+          transform: translateY(0px);
+        }
+      }
+      /* cv part */
+
+      @import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap");
+
+      body {
+        font-family: "Cairo", sans-serif;
+        background-color: #f8fafc;
+      }
+
+      /* =========================================
+           PREVIEW STYLE (What you see on screen)
+           ========================================= */
+      #cv-document {
+        font-family: "Times New Roman", Times, serif;
+        color: #000;
+        line-height: 1.25;
+        background: white;
+        padding: 0.5in 0.6in;
+        width: 8.5in;
+        min-height: 11in;
+        margin: auto;
+        direction: ltr;
+        text-align: left;
+        box-sizing: border-box;
+      }
+
+      #cv-document .header-name {
+        font-size: 28pt;
+        font-weight: bold;
+        text-align: center;
+        margin-bottom: 8pt;
+        text-transform: capitalize;
+      }
+
+      #cv-document .contact-info {
+        font-size: 14pt;
+        font-weight: normal;
+        text-align: center;
+        margin-bottom: 20pt;
+        background-color: #e2e8f0;
+        padding: 6px 0;
+      }
+
+      #cv-document .section-title {
+        font-size: 14pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        margin-top: 16pt;
+        margin-bottom: 8pt;
+        padding-bottom: 2px;
+        background-color: #f1f5f9;
+        border-bottom: 1px solid #ddd;
+      }
+
+      #cv-document .row-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        font-weight: bold;
+        margin-top: 8pt;
+        font-size: 12pt;
+      }
+
+      #cv-document .row-subheader {
+        font-style: italic;
+        font-weight: normal;
+        margin-bottom: 2pt;
+        font-size: 12pt;
+      }
+
+      #cv-document ul {
+        list-style-type: disc;
+        margin-left: 25px;
+        margin-top: 2pt;
+        margin-bottom: 0;
+      }
+
+      #cv-document li {
+        margin-bottom: 3pt;
+        padding-left: 2px;
+        font-size: 12pt;
+      }
+
+      #cv-document p,
+      #cv-document div {
+        font-size: 12pt;
+      }
+
+      /* Skills Grid */
+      #cv-document .skills-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        column-gap: 40px;
+        row-gap: 4px;
+        margin-top: 4px;
+      }
+      #cv-document .skill-item {
+        display: flex;
+        align-items: center;
+        font-size: 12pt;
+      }
+      #cv-document .skill-dot {
+        height: 6px;
+        width: 6px;
+        background-color: black;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 10px;
+        flex-shrink: 0;
+      }
+
+      @media print {
+        #cv-document .contact-info,
+        #cv-document .section-title {
+          -webkit-print-color-adjust: exact;
+        }
+      }
+    </style>
+  </head>
+  <body class="text-slate-900 bg-pattern min-h-screen">
+    <div id="debug-error"></div>
+
+    <div id="root">
+      <div
+        class="flex flex-col items-center justify-center h-screen bg-slate-50"
+      >
+        <div
+          class="animate-pulse rounded-full h-12 w-12 bg-blue-600 mb-4 shadow-lg shadow-blue-200"
+        ></div>
+        <p class="text-slate-400 text-sm font-medium">جاري تحضير المحتوى...</p>
+      </div>
+    </div>
+
+    <script type="text/babel" data-type="module">
+      // 1. استيراد المكتبات (React & Icons)
+      import React, { useState, useEffect } from "react";
+      import { createRoot } from "react-dom/client";
+      import {
+        Home,
+        Map,
+        Briefcase,
+        BookOpen,
+        Building,
+        DollarSign,
+        Car,
+        Users,
+        Menu,
+        X,
+        Compass,
+        ChevronLeft,
+        Search,
+        Globe,
+        ArrowRight,
+        Star,
+        Shield,
+        FileText,
+        CheckCircle,
+        LogIn,
+        LayoutGrid,
+        GraduationCap,
+        Bus,
+        HeartHandshake,
+        CreditCard,
+        AlertCircle,
+        ExternalLink,
+        Mail,
+        MessageSquare,
+        Twitter,
+        Facebook,
+        Instagram,
+        Sparkles,
+        Wrench,
+        Send,
+        Clock,
+        Plus,
+        Trash2,
+        Download,
+        Bot,
+        Copy,
+        Save,
+        History,
+      } from "lucide-react";
+
+      // 2. أكواد الـ Include (استدعاء الملفات الخارجية)
+      // ملاحظة: تأكد إن الملفات دي موجودة في نفس الفولدر وبتبدأ بكلمة export
+      import { DATA } from "./Data.jsx";
+      import { Sidebar } from "./Sidebar.jsx";
+      import { Header } from "./Header.jsx";
+      import { HomeView } from "./HomeView.jsx";
+      import { CVBuilderView } from "./CVBuilderView.jsx";
+      import { AuthView } from "./AuthView.jsx";
+      import { DetailPage } from "./DetailPage.jsx";
+      import { Footer } from "./Footer.jsx";
+      import { MobileNav, MobileMenuOverlay } from "./MobileNav.jsx";
+
+      const getDir = (lang) => (lang === "ar" ? "rtl" : "ltr");
+
+      // 3. المايسترو (App Component)
+      const App = () => {
+        const [page, setPage] = useState("home");
+        const [lang, setLang] = useState("ar");
+        const [menuOpen, setMenuOpen] = useState(false);
+
+        useEffect(() => {
+          window.scrollTo(0, 0);
+        }, [page]);
+
+        return (
+          <div
+            className="flex min-h-screen bg-[#f8fafc] font-sans text-slate-900"
+            dir={getDir(lang)}
+          >
+            {/* القائمة الجانبية المشتركة */}
+            <Sidebar lang={lang} page={page} setPage={setPage} />
+
+            <div className="flex-1 lg:mr-72 transition-all duration-300 flex flex-col min-h-screen">
+              {/* الهيدر المشترك */}
+              <Header lang={lang} setLang={setLang} />
+
+              <main className="flex-1">
+                {/* هنا التبديل بين الصفحات (الربط السحري) */}
+                {page === "home" && <HomeView lang={lang} setPage={setPage} />}
+                {page === "cv_builder" && <CVBuilderView lang={lang} />}
+                {page === "auth" && <AuthView lang={lang} setPage={setPage} />}
+
+                {/* لو الصفحة مش واحدة من اللي فوق، يبقى هي صفحة تفاصيل (سكن، شغل، إلخ) */}
+                {!["home", "cv_builder", "auth"].includes(page) && (
+                  <DetailPage page={page} lang={lang} />
+                )}
+              </main>
+
+              {/* الفوتر المشترك */}
+              <Footer lang={lang} setPage={setPage} />
+            </div>
+
+            {/* منيو الموبايل */}
+            <MobileNav
+              lang={lang}
+              page={page}
+              setPage={setPage}
+              toggleMenu={() => setMenuOpen(true)}
+            />
+            <MobileMenuOverlay
+              lang={lang}
+              isOpen={menuOpen}
+              close={() => setMenuOpen(false)}
+              setPage={setPage}
+            />
+          </div>
+        );
+      };
+
+      // 4. تشغيل الموقع
+      const root = createRoot(document.getElementById("root"));
+      root.render(<App />);
+    </script>
+  </body>
+</html>
