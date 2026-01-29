@@ -413,24 +413,33 @@ function safeDateToLocaleString(v) {
 /** ===== Stars (read-only) ===== */
 function StarsReadOnly({ value = 0, size = 16, showValue = true }) {
   const v = Math.max(0, Math.min(5, Number(value || 0)));
-  const rounded = Math.round(v);
   const cls = size >= 20 ? "h-5 w-5" : "h-4 w-4";
 
   return (
     <div className="inline-flex items-center gap-1">
       {Array.from({ length: 5 }).map((_, i) => {
-        const on = i + 1 <= rounded;
+        const n = i + 1;
+        const pct = Math.max(0, Math.min(1, v - i)) * 100; // 0..100
+
         return (
-          <Star
-            key={i}
-            className={cn(
-              cls,
-              "transition",
-              on ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
-            )}
-          />
+          <span key={n} className="relative inline-block">
+            {/* empty star */}
+            <Star className={cn(cls, "text-gray-300")} />
+
+            {/* filled part */}
+            {pct > 0 ? (
+              <Star
+                className={cn(
+                  cls,
+                  "absolute left-0 top-0 fill-yellow-400 text-yellow-400"
+                )}
+                style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }}
+              />
+            ) : null}
+          </span>
         );
       })}
+
       {showValue ? (
         <span className="ml-1 text-sm font-semibold text-gray-900">
           {v.toFixed(1)}
@@ -515,9 +524,21 @@ function RatingBreakdown({ reviews = [] }) {
   const counts = useMemo(() => {
     const c = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
     for (const r of reviews) {
-      const s = Math.max(1, Math.min(5, Number(r.stars) || 0));
-      if (s) c[s] = (c[s] || 0) + 1;
+      const n = Number(
+        r?.stars ??
+          r?.rating ??
+          r?.score ??
+          r?.value ??
+          r?.rate ??
+          r?.stars_value ??
+          null
+      );
+      if (!Number.isFinite(n)) continue;
+      if (n < 1 || n > 5) continue;
+      const s = Math.round(n); // لو بتحبها exact خليها: const s = n;
+      c[s] = (c[s] || 0) + 1;
     }
+
     return c;
   }, [reviews]);
 
@@ -667,13 +688,6 @@ export default function ItemDetailsView({ lang = "en" }) {
   const storedType =
     sessionStorage.getItem(`mp:type:${String(placeId || "").trim()}`) || "";
 
-  useEffect(() => {
-    const pid = String(placeId || "").trim();
-    const ttype = String(navType || "").trim();
-    if (!pid) return;
-    if (ttype) sessionStorage.setItem(`mp:type:${pid}`, ttype);
-  }, [placeId, navType]);
-
   const [loading, setLoading] = useState(true);
   const [place, setPlace] = useState(null);
   const [detailsBaseUrl, setDetailsBaseUrl] = useState("");
@@ -760,71 +774,6 @@ export default function ItemDetailsView({ lang = "en" }) {
     if (!myId || !createdBy) return false;
     return String(createdBy) === myId;
   }, [effectiveMe, place]);
-
-  const detailsCandidates = useMemo(() => {
-    if (kind === "places") {
-      return [
-        `${API_BASE}/api/community/places/${placeId}`,
-        `${API_BASE}/api/community/places/${shortId}`,
-        `${API_BASE}/api/marketplace/places/${placeId}`,
-        `${API_BASE}/api/marketplace/places/${shortId}`,
-        `${API_BASE}/api/listings/${placeId}`,
-        `${API_BASE}/api/listings/${shortId}`,
-        `${API_BASE}/api/marketplace/listings/${placeId}`,
-        `${API_BASE}/api/marketplace/listings/${shortId}`,
-      ];
-    }
-
-    if (kind === "groups") {
-      return [
-        `${API_BASE}/api/community/groups/${placeId}`,
-        `${API_BASE}/api/community/groups/${shortId}`,
-        `${API_BASE}/api/marketplace/groups/${placeId}`,
-        `${API_BASE}/api/marketplace/groups/${shortId}`,
-        `${API_BASE}/api/listings/${placeId}`,
-        `${API_BASE}/api/listings/${shortId}`,
-        `${API_BASE}/api/marketplace/listings/${placeId}`,
-        `${API_BASE}/api/marketplace/listings/${shortId}`,
-      ];
-    }
-
-    return [
-      `${API_BASE}/api/listings/${placeId}`,
-      `${API_BASE}/api/listings/${shortId}`,
-      `${API_BASE}/api/marketplace/listings/${placeId}`,
-      `${API_BASE}/api/marketplace/listings/${shortId}`,
-      `${API_BASE}/api/listings?type=${encodeURIComponent(kind)}&id=${placeId}`,
-      `${API_BASE}/api/listings?type=${encodeURIComponent(kind)}&id=${shortId}`,
-    ];
-  }, [kind, placeId, shortId]);
-
-  const reviewsCandidates = useMemo(() => {
-    const k = encodeURIComponent(kind);
-    return [
-      `${API_BASE}/api/community/${k}/${placeId}/reviews`,
-      `${API_BASE}/api/community/${k}/${shortId}/reviews`,
-      `${API_BASE}/api/marketplace/${k}/${placeId}/reviews`,
-      `${API_BASE}/api/marketplace/${k}/${shortId}/reviews`,
-      `${API_BASE}/api/listings/${placeId}/reviews`,
-      `${API_BASE}/api/listings/${shortId}/reviews`,
-      `${API_BASE}/api/marketplace/listings/${placeId}/reviews`,
-      `${API_BASE}/api/marketplace/listings/${shortId}/reviews`,
-    ];
-  }, [kind, placeId, shortId]);
-
-  const reviewMeCandidates = useMemo(() => {
-    const k = encodeURIComponent(kind);
-    return [
-      `${API_BASE}/api/community/${k}/${placeId}/reviews/me`,
-      `${API_BASE}/api/community/${k}/${shortId}/reviews/me`,
-      `${API_BASE}/api/marketplace/${k}/${placeId}/reviews/me`,
-      `${API_BASE}/api/marketplace/${k}/${shortId}/reviews/me`,
-      `${API_BASE}/api/listings/${placeId}/reviews/me`,
-      `${API_BASE}/api/listings/${shortId}/reviews/me`,
-      `${API_BASE}/api/marketplace/listings/${placeId}/reviews/me`,
-      `${API_BASE}/api/marketplace/listings/${shortId}/reviews/me`,
-    ];
-  }, [kind, placeId, shortId]);
 
   const [reviewsBaseUrl, setReviewsBaseUrl] = useState("");
   const [reviewMeBaseUrl, setReviewMeBaseUrl] = useState("");
@@ -927,12 +876,37 @@ export default function ItemDetailsView({ lang = "en" }) {
   );
   const ownerId = String(rawOwnerId || ownerProfile?.id || "").trim();
   const ownerName = String(ownerProfile?.name || rawOwnerName || "—").trim();
+  const pickStars = (r) => {
+    const n = Number(
+      r?.stars ??
+        r?.rating ??
+        r?.score ??
+        r?.value ??
+        r?.rate ??
+        r?.stars_value ??
+        null
+    );
+    if (!Number.isFinite(n)) return null;
+    if (n < 1 || n > 5) return null;
+    return n;
+  };
+
+  const validStars = (list) =>
+    (Array.isArray(list) ? list : [])
+      .map((r) => pickStars(r))
+      .filter((n) => n != null);
 
   const avgRating = useMemo(() => {
-    if (!reviews?.length) return 0;
-    const sum = reviews.reduce((a, r) => a + (Number(r.stars) || 0), 0);
-    return sum / reviews.length;
+    const stars = validStars(reviews);
+    if (!stars.length) return 0;
+    const sum = stars.reduce((a, n) => a + n, 0);
+    return sum / stars.length;
   }, [reviews]);
+
+  const reviewsCountForRating = useMemo(
+    () => validStars(reviews).length,
+    [reviews]
+  );
 
   const sortReviewsDesc = (arrv) => {
     const list = Array.isArray(arrv) ? [...arrv] : [];
@@ -956,12 +930,21 @@ export default function ItemDetailsView({ lang = "en" }) {
   const fetchPlace = async () => {
     try {
       setLoading(true);
-      const out = await fetchFirstOk(detailsCandidates, {
-        headers: { ...authHeaders() },
-      });
-      if (!out.ok) throw new Error(out.error || "Failed to load details");
-      setDetailsBaseUrl(out.url || "");
-      const normalized = normalizeToPlaceShape(out.data, kind);
+
+      const id = String(shortId || placeId || "")
+        .trim()
+        .replace(/^place_/, "");
+      const url = `${API_BASE}/api/community/places/${id}`;
+
+      const res = await fetch(url, { headers: { ...authHeaders() } });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok)
+        throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
+
+      setDetailsBaseUrl(url);
+
+      const normalized = normalizeToPlaceShape(data, kind);
       setPlace(normalized);
     } catch (e) {
       notify.error(e?.message || "Failed to load details");
@@ -975,23 +958,28 @@ export default function ItemDetailsView({ lang = "en" }) {
     try {
       setReviewsLoading(true);
 
-      const out = await fetchFirstOk(reviewsCandidates, {
-        headers: { ...authHeaders() },
-      });
+      const id = String(shortId || placeId || "")
+        .trim()
+        .replace(/^place_/, "");
 
-      if (!out.ok) {
+      const url = `${API_BASE}/api/community/places/${id}/reviews`;
+
+      const res = await fetch(url, { headers: { ...authHeaders() } });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
         setReviews([]);
         setReviewsBaseUrl("");
         setReviewMeBaseUrl("");
         return;
       }
 
-      const list = Array.isArray(out.data) ? out.data : out.data?.reviews || [];
+      const list = Array.isArray(data) ? data : data?.reviews || [];
       setReviews(sortReviewsDesc(list));
-      setReviewsBaseUrl(out.url || "");
 
-      const guessMe = (out.url || "").replace(/\/reviews\/?$/, "/reviews/me");
-      setReviewMeBaseUrl(guessMe || "");
+      setReviewsBaseUrl(url);
+      setReviewMeBaseUrl(`${API_BASE}/api/community/places/${id}/reviews/me`);
     } catch (e) {
       notify.error(e?.message || "Failed to load reviews");
       setReviews([]);
@@ -1084,10 +1072,13 @@ export default function ItemDetailsView({ lang = "en" }) {
 
   useEffect(() => {
     fetchPlace();
+
     fetchReviews();
+
     fetchMe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [placeId, navType]);
+
   useEffect(() => {
     if (!rawOwnerId) {
       setOwnerProfile(null);
@@ -1134,8 +1125,8 @@ export default function ItemDetailsView({ lang = "en" }) {
     setMyReview(mine);
 
     if (mine) {
-      setRStars(Number(mine.stars) || 5);
-      setRText(mine.text || "");
+      setRStars(pickStars(mine) || 5);
+      setRText(mine.text || mine.comment || mine.body || mine.message || "");
       setShowReviewForm(false);
     } else {
       setRStars(5);
@@ -1153,137 +1144,27 @@ export default function ItemDetailsView({ lang = "en" }) {
     if (!text) return notify.error(t(L, "writeText"));
     if (!(stars >= 1 && stars <= 5)) return notify.error(t(L, "starsRange"));
 
-    const pid = String(placeId || "").trim();
-    const sid = String(shortId || "").trim();
-    const hasPrefix = pid.includes("_");
-
-    const singular =
-      kind === "groups"
-        ? "group"
-        : kind === "places"
-        ? "place"
-        : kind === "services"
-        ? "service"
-        : kind;
-
-    const prefId = hasPrefix ? pid : `${singular}_${sid || pid}`;
-    const kEnc = encodeURIComponent(kind);
-
-    const postUrls =
-      kind === "places" || kind === "groups"
-        ? [
-            `${API_BASE}/api/community/${kEnc}/${sid}/reviews`,
-            `${API_BASE}/api/community/${kEnc}/${pid}/reviews`,
-            `${API_BASE}/api/listings/${sid}/reviews`,
-            `${API_BASE}/api/marketplace/listings/${sid}/reviews`,
-            `${API_BASE}/api/listings/${prefId}/reviews`,
-            `${API_BASE}/api/marketplace/listings/${prefId}/reviews`,
-          ]
-        : [
-            `${API_BASE}/api/listings/${prefId}/reviews`,
-            `${API_BASE}/api/listings/${pid}/reviews`,
-            `${API_BASE}/api/listings/${sid}/reviews`,
-            `${API_BASE}/api/marketplace/listings/${prefId}/reviews`,
-            `${API_BASE}/api/marketplace/listings/${pid}/reviews`,
-            `${API_BASE}/api/marketplace/listings/${sid}/reviews`,
-          ];
-
-    const methods = ["POST"];
-
-    const reviewId =
-      myReview?.id ||
-      myReview?.review_id ||
-      myReview?._id ||
-      myReview?.rid ||
-      null;
-
-    const payload = {
-      stars,
-      rating: stars,
-      score: stars,
-      text,
-      comment: text,
-      body: text,
-      message: text,
-      id: sid || pid,
-      itemId: sid || pid,
-      placeId: sid || pid,
-      listingId: sid || pid,
-      targetId: sid || pid,
-      prefixedId: prefId,
-      listing_id: sid || pid,
-      kind,
-      type: kind,
-      listing_type: kind,
-    };
-
-    let lastErr = null;
-
     try {
-      for (const u of postUrls) {
-        for (const m of methods) {
-          try {
-            const res = await fetch(u, {
-              method: m,
-              headers: { "Content-Type": "application/json", ...authHeaders() },
-              body: JSON.stringify(payload),
-            });
-            const data = await res.json().catch(() => ({}));
+      const id = String(shortId || placeId || "")
+        .trim()
+        .replace(/^place_/, "");
+      const url = `${API_BASE}/api/community/places/${id}/reviews`;
+      const payload = { stars, text };
 
-            if (res.status === 401) return requireLogin();
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(payload),
+      });
 
-            if (res.ok) {
-              notify.success(
-                myReview ? t(L, "reviewUpdated") : t(L, "reviewAdded")
-              );
-              await fetchReviews();
-              setShowReviewForm(false);
-              return;
-            }
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) return requireLogin();
+      if (!res.ok)
+        throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
 
-            lastErr =
-              data?.error ||
-              data?.message ||
-              data?.details ||
-              (typeof data === "string" ? data : JSON.stringify(data)) ||
-              `HTTP ${res.status}`;
-          } catch (e) {
-            lastErr = e?.message || "Network error";
-          }
-        }
-      }
-
-      if (reviewId) {
-        for (const u of postUrls) {
-          try {
-            const res = await fetch(`${u}/${reviewId}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", ...authHeaders() },
-              body: JSON.stringify(payload),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (res.status === 401) return requireLogin();
-
-            if (res.ok) {
-              notify.success(t(L, "reviewUpdated"));
-              await fetchReviews();
-              setShowReviewForm(false);
-              return;
-            }
-
-            lastErr =
-              data?.error ||
-              data?.message ||
-              data?.details ||
-              (typeof data === "string" ? data : JSON.stringify(data)) ||
-              `HTTP ${res.status}`;
-          } catch (e) {
-            lastErr = e?.message || "Network error";
-          }
-        }
-      }
-
-      throw new Error(lastErr || "Failed to save review");
+      notify.success(myReview ? t(L, "reviewUpdated") : t(L, "reviewAdded"));
+      await fetchReviews();
+      setShowReviewForm(false);
     } catch (e) {
       notify.error(e?.message || "Failed to save review");
     }
@@ -1291,15 +1172,28 @@ export default function ItemDetailsView({ lang = "en" }) {
 
   const startEditMyReview = () => {
     if (!myReview) return;
-    setRStars(Number(myReview.stars) || 5);
-    setRText(myReview.text || "");
+    setRStars(pickStars(myReview) || 5);
+    setRText(
+      myReview.text ||
+        myReview.comment ||
+        myReview.body ||
+        myReview.message ||
+        ""
+    );
+
     setShowReviewForm(true);
   };
 
   const cancelEdit = () => {
     if (myReview) {
-      setRStars(Number(myReview.stars) || 5);
-      setRText(myReview.text || "");
+      setRStars(pickStars(myReview) || 5);
+      setRText(
+        myReview.text ||
+          myReview.comment ||
+          myReview.body ||
+          myReview.message ||
+          ""
+      );
       setShowReviewForm(false);
     } else {
       setRStars(5);
@@ -1768,7 +1662,7 @@ export default function ItemDetailsView({ lang = "en" }) {
                         showValue={false}
                       />
                       <div className="text-xs text-gray-600 mt-1">
-                        {reviews.length} {t(L, "reviews")}
+                        {reviewsCountForRating} {t(L, "reviews")}
                       </div>
                     </div>
                   </div>
@@ -1879,14 +1773,21 @@ export default function ItemDetailsView({ lang = "en" }) {
                             ) : null}
 
                             <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 border px-2 py-0.5">
-                              <StarsReadOnly
-                                value={Number(r.stars || 0)}
-                                size={14}
-                                showValue={false}
-                              />
-                              <span className="text-xs font-semibold text-gray-700">
-                                {Number(r.stars || 0)}/5
-                              </span>
+                              {(() => {
+                                const s = pickStars(r);
+                                return (
+                                  <>
+                                    <StarsReadOnly
+                                      value={s || 0}
+                                      size={14}
+                                      showValue={false}
+                                    />
+                                    <span className="text-xs font-semibold text-gray-700">
+                                      {s != null ? `${s}/5` : "—"}
+                                    </span>
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
                         </div>
@@ -1911,7 +1812,7 @@ export default function ItemDetailsView({ lang = "en" }) {
                       </div>
 
                       <p className="mt-3 text-sm leading-6 text-gray-700">
-                        {r.text}
+                        {r.text || r.comment || r.body || r.message || ""}
                       </p>
                     </div>
                   );
@@ -2107,10 +2008,7 @@ export default function ItemDetailsView({ lang = "en" }) {
               <div className="mt-3 rounded-2xl border bg-gray-50 p-3">
                 <div className="text-xs text-gray-600">{t(L, "rating")}</div>
                 <div className="mt-1">
-                  <StarsReadOnly
-                    value={Number(myReview?.stars || 0)}
-                    size={18}
-                  />
+                  <StarsReadOnly value={pickStars(myReview)} size={18} />
                 </div>
                 <div className="mt-3 text-xs text-gray-600">
                   {t(L, "comment")}

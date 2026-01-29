@@ -103,7 +103,7 @@ function AppContent() {
         reverseOrder={false}
         containerStyle={{ zIndex: 999999 }}
         toastOptions={{
-          duration: 2600,
+          duration: 1500,
           style: {
             background: "#ffffff",
             color: "#0f172a",
@@ -116,11 +116,11 @@ function AppContent() {
             maxWidth: "420px",
           },
           success: {
-            duration: 2200,
+            duration: 1500,
             style: { border: "1px solid rgba(16,185,129,0.25)" },
           },
           error: {
-            duration: 3200,
+            duration: 1500,
             style: { border: "1px solid rgba(239,68,68,0.25)" },
           },
         }}

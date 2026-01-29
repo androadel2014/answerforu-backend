@@ -1,5 +1,6 @@
 // src/components/ProfilePageBody.jsx
-import React from "react";
+import React, { useMemo } from "react";
+import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   MapPin,
@@ -10,10 +11,11 @@ import {
   Pencil,
   Star,
   Store,
-  Briefcase,
   MessageCircle,
   Share2,
 } from "lucide-react";
+
+import { CardItem } from "../community/CardItem";
 
 import {
   tt,
@@ -26,10 +28,176 @@ import {
   TabPill,
   Field,
   PostsTab,
-  ServicesTab,
-  ProductsTab,
   ReviewsTab,
 } from "./profilePage.parts";
+
+function fmtWhen(v) {
+  const s = String(v || "").trim();
+  if (!s) return "";
+  const d = new Date(s);
+  if (!Number.isFinite(d.getTime())) return s;
+  return d.toLocaleString();
+}
+
+function StarsRow({ value = 0 }) {
+  const n = Math.max(0, Math.min(5, Number(value) || 0));
+  return (
+    <div className="flex items-center gap-1">
+      {Array.from({ length: 5 }).map((_, i) => {
+        const on = i < n;
+        return (
+          <Star
+            key={i}
+            size={18}
+            className={on ? "text-yellow-500" : "text-gray-300"}
+            fill={on ? "currentColor" : "none"}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function pickReviewName(r) {
+  const name =
+    r?.reviewer_name ||
+    r?.user_name ||
+    r?.userName ||
+    r?.username ||
+    r?.email ||
+    "";
+  return String(name || "").trim() || "User";
+}
+
+function pickReviewUserId(r) {
+  const id = Number(
+    r?.reviewer_id ?? r?.reviewerId ?? r?.user_id ?? r?.userId ?? 0
+  );
+  return Number.isFinite(id) && id > 0 ? id : 0;
+}
+
+function pickItemTitle(r) {
+  const t =
+    r?.item_title ||
+    r?.itemTitle ||
+    r?.title ||
+    r?.listing_title ||
+    r?.listingTitle ||
+    "";
+  return String(t || "").trim();
+}
+
+function pickItemHref(r) {
+  // coming from ProfilePage normalize: item_href
+  const href = String(r?.item_href || "").trim();
+  if (href) return href;
+
+  // fallback: build from item_id
+  const id = Number(r?.item_id ?? r?.itemId ?? 0);
+  if (Number.isFinite(id) && id > 0) return `/marketplace/item/${id}`;
+  return "";
+}
+
+/* =========================
+   Adapter: listing -> CardItem shape (minimal)
+   + keep prefixed id for /marketplace/item/:id
+========================= */
+function buildPrefixedId(type, id) {
+  const t = String(type || "").toLowerCase();
+  const n = id == null ? null : Number(id);
+  if (!Number.isFinite(n)) return null;
+
+  if (t === "places") return `place_${n}`;
+  if (t === "groups") return `group_${n}`;
+  if (t === "services") return `service_${n}`;
+  if (t === "products") return `product_${n}`;
+  if (t === "jobs") return `jobs_${n}`;
+  if (t === "housing") return `housing_${n}`;
+  return null;
+}
+
+function toCardItemShape(raw) {
+  const it = raw || {};
+  const type = String(it?._type || it?.type || "").toLowerCase() || "services";
+
+  const idNum =
+    it?.id ??
+    it?.listing_id ??
+    it?.service_id ??
+    it?.product_id ??
+    it?.job_id ??
+    it?.housing_id ??
+    null;
+
+  const pref = buildPrefixedId(type, idNum);
+
+  return {
+    // IMPORTANT: CommunityView uses prefixed ids in unified items
+    // CardItem doesn't require id format, but onOpen needs it for route
+    id: pref || idNum,
+
+    type, // used when tab === "all" in CardItem
+    name: it?.name || it?.title || it?.headline || "Untitled",
+    title: it?.title || it?.name || it?.headline || "Untitled",
+
+    category: it?.category || it?.place_category || it?.service_category || "",
+    platform: it?.platform || it?.group_platform || "",
+    topic: it?.topic || it?.group_topic || "",
+
+    state: it?.state || "",
+    city: it?.city || "",
+    address: it?.address || "",
+
+    website: it?.website || it?.site || it?.url || "",
+    phone: it?.phone || it?.tel || "",
+    link: it?.link || it?.url || it?.website || "",
+
+    contact: it?.contact || it?.phone || it?.whatsapp || it?.email || "",
+
+    description: it?.description || it?.notes || it?.desc || "",
+
+    price_value:
+      it?.price_value ??
+      it?.priceValue ??
+      it?.price ??
+      it?.amount ??
+      it?.budget ??
+      null,
+
+    createdAt:
+      it?.createdAt ||
+      it?.created_at ||
+      it?.updatedAt ||
+      it?.updated_at ||
+      null,
+    created_at: it?.created_at || it?.createdAt || null,
+
+    avg_rating:
+      it?.avg_rating ??
+      it?.rating_avg ??
+      it?.avgRating ??
+      it?.rating ??
+      it?.stars ??
+      0,
+
+    reviews_count:
+      it?.reviews_count ??
+      it?.review_count ??
+      it?.reviewsCount ??
+      it?.rating_count ??
+      it?.count ??
+      0,
+
+    created_by:
+      it?.created_by ??
+      it?.createdBy ??
+      it?.user_id ??
+      it?.userId ??
+      it?.owner_id ??
+      it?.ownerId ??
+      0,
+  };
+}
 
 export default function ProfilePageBody({
   // basics
@@ -53,14 +221,10 @@ export default function ProfilePageBody({
   setTab,
   tabLoading,
   posts,
-  services,
-  products,
   reviews,
 
   // counts
   countPosts,
-  countServices,
-  countProducts,
   countReviews,
 
   // derived UI
@@ -79,41 +243,38 @@ export default function ProfilePageBody({
   onDeletePost,
   onUpdatePost,
   refreshCurrentTab,
-  onDeleteService,
-  onDeleteProduct,
 
   onSaveProfile,
-  onCreateService,
-  onCreateProduct,
   onCreateReview,
 
-  // ✅ NEW (avatar)
+  // avatar
   onUploadAvatar,
   onDeleteAvatar,
 
   // modals state
   editOpen,
   setEditOpen,
-  addServiceOpen,
-  setAddServiceOpen,
-  addProductOpen,
-  setAddProductOpen,
   addReviewOpen,
   setAddReviewOpen,
 
   // forms
   editForm,
   setEditForm,
-  serviceForm,
-  setServiceForm,
-  productForm,
-  setProductForm,
   reviewForm,
   setReviewForm,
 
   // components (injected)
   PostCardComp,
   PostComposerComp,
+
+  // listings
+  listingsAll = [],
+  listingsLoading = false,
+  countListingsAll = 0,
+  onAddListingClick,
+  onEditListing,
+  onDeleteListing,
+  listingsOwnerId,
 }) {
   if (loading) {
     return (
@@ -146,19 +307,43 @@ export default function ProfilePageBody({
   }
 
   const canAvatarActions = !!canEdit && !!onUploadAvatar && !!onDeleteAvatar;
-
-  // ✅ cover src (supports relative + absolute + fallback to profile.cover_url)
   const coverSrcRaw = cover || profile.cover_url || "";
   const coverSrc = coverSrcRaw ? absUrl(API_BASE, coverSrcRaw) : "";
 
+  const marketplaceLabel =
+    lang === "ar" ? "إعلاناتي" : lang === "es" ? "Mis anuncios" : "My Listings";
+
+  const showAddForListings =
+    tab === "listingsAll" && !!canAct && !!listingsOwnerId;
+
+  const onAddListing = () => {
+    if (!canAct) return toast.error(tt(lang, "loginFirst"));
+    if (typeof onAddListingClick === "function") return onAddListingClick();
+    navigate("/community?add=1");
+  };
+
+  // ✅ Build cards for CardItem
+  const cardRows = useMemo(() => {
+    const arr = Array.isArray(listingsAll) ? listingsAll : [];
+    return arr.map((raw) => {
+      const t = String(raw?._type || raw?.type || "services").toLowerCase();
+      const it = toCardItemShape(raw);
+
+      // ensure prefixed id for route
+      const prefId = String(it?.id || "").includes("_")
+        ? String(it.id)
+        : buildPrefixedId(t, it?.id);
+
+      return { raw, t, it: { ...it, id: prefId || it.id } };
+    });
+  }, [listingsAll]);
+
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-6" dir={dir}>
-      {/* ✅ Header Card (single cover only, facebook-style) */}
+      {/* Header */}
       <div className="relative rounded-2xl overflow-hidden border bg-white">
-        {/* Cover */}
         <div className="relative">
           <div className="w-full h-44 md:h-56 bg-gradient-to-r from-gray-100 to-gray-200" />
-
           {coverSrc ? (
             <img
               src={coverSrc}
@@ -207,32 +392,11 @@ export default function ProfilePageBody({
               </button>
             </div>
           ) : null}
-
-          {!coverSrc && canEdit ? (
-            <label className="absolute inset-0 flex items-center justify-center cursor-pointer">
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  onUploadCover(f);
-                  e.target.value = "";
-                }}
-              />
-              <div className="px-4 py-2 rounded-xl bg-white/90 border text-sm text-gray-700 hover:bg-white shadow">
-                {tt(lang, "add")} cover
-              </div>
-            </label>
-          ) : null}
         </div>
 
-        {/* Content */}
         <div className="p-4 md:p-6">
           <div className="flex flex-col md:flex-row md:items-end gap-4">
             <div className="-mt-12 md:-mt-16 flex items-end gap-4">
-              {/* ===== Avatar ===== */}
               <div className="relative">
                 <div className="w-24 h-24 md:w-28 md:h-28 rounded-2xl overflow-hidden border bg-white shadow">
                   {avatar ? (
@@ -251,10 +415,8 @@ export default function ProfilePageBody({
                   )}
                 </div>
 
-                {/* ✅ avatar actions (edit/delete) */}
                 {canAvatarActions ? (
                   <div className="absolute -bottom-2 -right-2 flex gap-2">
-                    {/* Upload */}
                     <label className="cursor-pointer select-none">
                       <input
                         type="file"
@@ -272,7 +434,6 @@ export default function ProfilePageBody({
                       </div>
                     </label>
 
-                    {/* Delete */}
                     <button
                       type="button"
                       onClick={() => onDeleteAvatar()}
@@ -339,7 +500,6 @@ export default function ProfilePageBody({
             </div>
           </div>
 
-          {/* Bio + Meta */}
           <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-2">
               <div className="text-gray-800 whitespace-pre-wrap">
@@ -381,8 +541,9 @@ export default function ProfilePageBody({
               followers={followers}
               following={following}
               posts={countPosts}
-              services={countServices}
-              products={countProducts}
+              services={0}
+              products={0}
+              myListingsCount={countListingsAll}
             />
           </div>
         </div>
@@ -397,18 +558,14 @@ export default function ProfilePageBody({
             icon={<MessageCircle size={16} />}
             label={`${tt(lang, "posts")} (${countPosts})`}
           />
+
           <TabPill
-            active={tab === "services"}
-            onClick={() => setTab("services")}
-            icon={<Briefcase size={16} />}
-            label={`${tt(lang, "services")} (${countServices})`}
-          />
-          <TabPill
-            active={tab === "products"}
-            onClick={() => setTab("products")}
+            active={tab === "listingsAll"}
+            onClick={() => setTab("listingsAll")}
             icon={<Store size={16} />}
-            label={`${tt(lang, "products")} (${countProducts})`}
+            label={`${marketplaceLabel} (${countListingsAll})`}
           />
+
           <TabPill
             active={tab === "reviews"}
             onClick={() => setTab("reviews")}
@@ -422,23 +579,17 @@ export default function ProfilePageBody({
               lang === "ar" ? "ml-0 mr-auto" : ""
             )}
           >
-            {canEdit && tab === "services" ? (
+            {showAddForListings ? (
               <button
-                onClick={() => setAddServiceOpen(true)}
+                onClick={onAddListing}
                 className="px-3 py-2 rounded-xl bg-black text-white hover:bg-gray-900 flex items-center gap-2"
               >
                 <Plus size={16} />
-                {tt(lang, "addService")}
-              </button>
-            ) : null}
-
-            {canEdit && tab === "products" ? (
-              <button
-                onClick={() => setAddProductOpen(true)}
-                className="px-3 py-2 rounded-xl bg-black text-white hover:bg-gray-900 flex items-center gap-2"
-              >
-                <Plus size={16} />
-                {tt(lang, "addProduct")}
+                {lang === "ar"
+                  ? "إضافة إعلان"
+                  : lang === "es"
+                  ? "Añadir anuncio"
+                  : "Add Listing"}
               </button>
             ) : null}
 
@@ -483,36 +634,242 @@ export default function ProfilePageBody({
             />
           ) : null}
 
-          {!tabLoading && tab === "services" ? (
-            <ServicesTab
-              lang={lang}
-              items={services}
-              isMe={canEdit}
-              onDelete={onDeleteService}
-            />
-          ) : null}
-
-          {!tabLoading && tab === "products" ? (
-            <ProductsTab
-              lang={lang}
-              items={products}
-              isMe={canEdit}
-              onDelete={onDeleteProduct}
-            />
+          {/* ✅ Listings: open/edit/delete exactly like Marketplace */}
+          {!tabLoading && tab === "listingsAll" ? (
+            <div className="space-y-3">
+              {listingsLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="animate-pulse border rounded-2xl bg-white p-4"
+                    >
+                      <div className="h-10 bg-gray-100 rounded-2xl" />
+                      <div className="mt-3 h-5 bg-gray-100 rounded w-2/3" />
+                      <div className="mt-2 h-4 bg-gray-100 rounded w-1/2" />
+                      <div className="mt-2 h-4 bg-gray-100 rounded w-4/5" />
+                    </div>
+                  ))}
+                </div>
+              ) : cardRows.length ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {cardRows.map(({ raw, t, it }, idx) => {
+                    const openType = t;
+                    const openId = String(it?.id || "");
+                    return (
+                      <CardItem
+                        key={`${t}_${openId || idx}`}
+                        lang={lang}
+                        tab={t}
+                        it={it}
+                        isLoggedIn={!!canAct}
+                        onEdit={() => onEditListing?.(raw)}
+                        onDelete={() => onDeleteListing?.(raw)}
+                        onOpen={() => {
+                          // ✅ SAME as CommunityView
+                          const id = openId;
+                          sessionStorage.setItem(
+                            `mp:type:${openType}:${id}`,
+                            openType
+                          );
+                          return navigate(`/marketplace/item/${id}`, {
+                            state: { type: openType },
+                          });
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-sm text-gray-500">
+                  {canAct
+                    ? lang === "ar"
+                      ? "مفيش إعلانات عندك لسه."
+                      : lang === "es"
+                      ? "Aún no tienes anuncios."
+                      : "You don't have any listings yet."
+                    : lang === "ar"
+                    ? "سجّل دخول علشان تشوف إعلاناتك."
+                    : lang === "es"
+                    ? "Inicia sesión para ver tus anuncios."
+                    : "Login to see your listings."}
+                </div>
+              )}
+            </div>
           ) : null}
 
           {!tabLoading && tab === "reviews" ? (
-            <ReviewsTab
-              lang={lang}
-              items={reviews}
-              ratingAvg={ratingAvg}
-              ratingCount={countReviews}
-            />
+            <div className="space-y-3">
+              {/* List */}
+              {Array.isArray(reviews) && reviews.length ? (
+                reviews.map((r, idx) => {
+                  const stars = Number(r?.stars ?? r?.rating ?? 0) || 0;
+                  const whoName = pickReviewName(r);
+                  const whoId = pickReviewUserId(r);
+                  const whoHref = whoId ? `/u/${whoId}` : "";
+
+                  const itemTitle =
+                    pickItemTitle(r) || (lang === "ar" ? "عنصر" : "Item");
+                  const itemHref = pickItemHref(r);
+
+                  const comment = String(
+                    r?.comment ?? r?.commentText ?? r?.text ?? r?.body ?? ""
+                  ).trim();
+
+                  const when = fmtWhen(
+                    r?.created_at || r?.createdAt || r?.date
+                  );
+
+                  return (
+                    <div
+                      key={`rv:${
+                        r?.id ?? r?.review_id ?? r?.rating_id ?? "x"
+                      }:${pickReviewUserId(r)}:${String(
+                        r?.item_type || ""
+                      )}:${Number(r?.item_id ?? r?.itemId ?? 0)}:${String(
+                        r?.created_at || r?.createdAt || ""
+                      )}:${idx}`}
+                      className="bg-white border rounded-2xl p-4 md:p-5"
+                    >
+                      <div className="flex items-start gap-3">
+                        {/* Avatar */}
+                        <div className="shrink-0">
+                          <div className="w-11 h-11 rounded-full bg-gray-100 border flex items-center justify-center font-bold text-gray-700">
+                            {getInitials(pickReviewName(r))}
+                          </div>
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          {/* Header: name + time */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              {(() => {
+                                const whoId = pickReviewUserId(r);
+                                const whoName = pickReviewName(r);
+                                const whoHref = whoId ? `/u/${whoId}` : "";
+                                return whoHref ? (
+                                  <Link
+                                    to={whoHref}
+                                    className="font-semibold text-gray-900 hover:underline truncate"
+                                    title={
+                                      lang === "ar"
+                                        ? "افتح الحساب"
+                                        : "Open profile"
+                                    }
+                                  >
+                                    {whoName}
+                                  </Link>
+                                ) : (
+                                  <div className="font-semibold text-gray-900 truncate">
+                                    {whoName}
+                                  </div>
+                                );
+                              })()}
+
+                              {(() => {
+                                const when = fmtWhen(
+                                  r?.created_at || r?.createdAt || r?.date
+                                );
+                                return when ? (
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    {when}
+                                  </div>
+                                ) : null;
+                              })()}
+                            </div>
+
+                            {/* Score */}
+                            <div className="shrink-0 flex items-center gap-2">
+                              <div className="px-2.5 py-1 rounded-xl bg-gray-50 border text-sm font-semibold text-gray-900">
+                                {(
+                                  Number(r?.stars ?? r?.rating ?? 0) || 0
+                                ).toFixed(1)}
+                                /5
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Stars row */}
+                          <div className="mt-3 flex items-center justify-between gap-3">
+                            <StarsRow
+                              value={Number(r?.stars ?? r?.rating ?? 0) || 0}
+                            />
+
+                            {/* Item badge */}
+                            {(() => {
+                              const itemTitle =
+                                pickItemTitle(r) ||
+                                (lang === "ar" ? "عنصر" : "Item");
+                              const itemHref = pickItemHref(r);
+                              return itemHref ? (
+                                <Link
+                                  to={itemHref}
+                                  className="max-w-[55%] truncate px-3 py-1.5 rounded-full bg-blue-50 text-blue-800 border border-blue-100 text-sm font-medium hover:underline"
+                                  title={
+                                    lang === "ar" ? "فتح الإعلان" : "Open item"
+                                  }
+                                >
+                                  {lang === "ar"
+                                    ? "تم التقييم على: "
+                                    : "Reviewed: "}
+                                  {itemTitle}
+                                </Link>
+                              ) : (
+                                <div className="max-w-[55%] truncate px-3 py-1.5 rounded-full bg-gray-50 text-gray-700 border text-sm font-medium">
+                                  {lang === "ar"
+                                    ? "تم التقييم على: "
+                                    : "Reviewed: "}
+                                  {itemTitle}
+                                </div>
+                              );
+                            })()}
+                          </div>
+
+                          {/* Comment bubble */}
+                          {(() => {
+                            const comment = String(
+                              r?.comment ??
+                                r?.commentText ??
+                                r?.text ??
+                                r?.body ??
+                                ""
+                            ).trim();
+
+                            return comment ? (
+                              <div className="mt-4 bg-gray-50 border rounded-2xl p-3 text-sm text-gray-800 leading-6 whitespace-pre-wrap">
+                                {comment}
+                              </div>
+                            ) : (
+                              <div className="mt-4 text-sm text-gray-400 italic">
+                                {lang === "ar" ? "بدون تعليق" : "No comment"}
+                              </div>
+                            );
+                          })()}
+
+                          {/* Footer: action */}
+                          {(() => {
+                            const itemHref = pickItemHref(r);
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-sm text-gray-500">
+                  {lang === "ar"
+                    ? "لا توجد تقييمات بعد."
+                    : lang === "es"
+                    ? "Aún no hay reseñas."
+                    : "No reviews yet."}
+                </div>
+              )}
+            </div>
           ) : null}
         </div>
       </div>
 
-      {/* ===== Modals ===== */}
+      {/* Modals */}
       <Modal
         title={tt(lang, "editProfile")}
         open={editOpen}
@@ -534,64 +891,6 @@ export default function ProfilePageBody({
           </div>
         }
       >
-        {/* ✅ Avatar controls inside modal */}
-        {canAvatarActions ? (
-          <div className="mb-4 p-3 border rounded-2xl bg-gray-50 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl overflow-hidden border bg-white">
-                {avatar ? (
-                  <img
-                    src={avatar}
-                    alt="avatar"
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.currentTarget.style.display = "none";
-                    }}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gray-900 text-white font-extrabold">
-                    {getInitials(displayName)}
-                  </div>
-                )}
-              </div>
-              <div>
-                <div className="font-semibold text-sm">
-                  {tt(lang, "avatar")}
-                </div>
-                <div className="text-xs text-gray-500">PNG/JPG up to ~2MB</div>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <label className="cursor-pointer select-none">
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    onUploadAvatar(f);
-                    e.target.value = "";
-                  }}
-                />
-                <div className="px-3 py-2 rounded-xl bg-black text-white hover:bg-gray-900 flex items-center gap-2">
-                  <Pencil size={16} />
-                  {tt(lang, "change")}
-                </div>
-              </label>
-
-              <button
-                type="button"
-                onClick={() => onDeleteAvatar()}
-                className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 text-red-600"
-              >
-                {tt(lang, "delete")}
-              </button>
-            </div>
-          </div>
-        ) : null}
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Field
             label="Username"
@@ -605,7 +904,6 @@ export default function ProfilePageBody({
             onChange={(v) => setEditForm((s) => ({ ...s, display_name: v }))}
             placeholder="Your name"
           />
-
           <Field
             label="Avatar URL"
             value={editForm.avatar_url}
@@ -643,6 +941,7 @@ export default function ProfilePageBody({
             placeholder="+20..."
           />
         </div>
+
         <div className="mt-3">
           <label className="text-sm font-medium">Bio</label>
           <textarea
@@ -653,153 +952,6 @@ export default function ProfilePageBody({
             }
             placeholder="Tell people about you…"
           />
-        </div>
-      </Modal>
-
-      <Modal
-        title={tt(lang, "addService")}
-        open={addServiceOpen}
-        onClose={() => setAddServiceOpen(false)}
-        footer={
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={() => setAddServiceOpen(false)}
-              className="px-4 py-2 rounded-xl border hover:bg-gray-50"
-            >
-              {tt(lang, "cancel")}
-            </button>
-            <button
-              onClick={onCreateService}
-              className="px-4 py-2 rounded-xl bg-black text-white hover:bg-gray-900"
-            >
-              {tt(lang, "add")}
-            </button>
-          </div>
-        }
-      >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field
-            label="Title"
-            value={serviceForm.title}
-            onChange={(v) => setServiceForm((s) => ({ ...s, title: v }))}
-            placeholder="Electrician / Plumber…"
-          />
-          <Field
-            label="Category"
-            value={serviceForm.category}
-            onChange={(v) => setServiceForm((s) => ({ ...s, category: v }))}
-            placeholder="Home services…"
-          />
-          <div>
-            <label className="text-sm font-medium">Price type</label>
-            <select
-              className="mt-1 w-full border rounded-2xl p-3 outline-none focus:ring-2 focus:ring-black/10"
-              value={serviceForm.price_type}
-              onChange={(e) =>
-                setServiceForm((s) => ({ ...s, price_type: e.target.value }))
-              }
-            >
-              <option value="negotiable">Negotiable</option>
-              <option value="fixed">Fixed</option>
-              <option value="starting_at">Starting at</option>
-            </select>
-          </div>
-          <Field
-            label="Price value (optional)"
-            value={serviceForm.price_value}
-            onChange={(v) => setServiceForm((s) => ({ ...s, price_value: v }))}
-            placeholder="e.g. 100"
-          />
-          <Field
-            label="Location (optional)"
-            value={serviceForm.location}
-            onChange={(v) => setServiceForm((s) => ({ ...s, location: v }))}
-            placeholder="Fairfax, VA"
-          />
-          <div className="md:col-span-2">
-            <label className="text-sm font-medium">Description</label>
-            <textarea
-              className="mt-1 w-full min-h-[110px] border rounded-2xl p-3 outline-none focus:ring-2 focus:ring-black/10"
-              value={serviceForm.description}
-              onChange={(e) =>
-                setServiceForm((s) => ({ ...s, description: e.target.value }))
-              }
-              placeholder="Describe your service…"
-            />
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        title={tt(lang, "addProduct")}
-        open={addProductOpen}
-        onClose={() => setAddProductOpen(false)}
-        footer={
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={() => setAddProductOpen(false)}
-              className="px-4 py-2 rounded-xl border hover:bg-gray-50"
-            >
-              {tt(lang, "cancel")}
-            </button>
-            <button
-              onClick={onCreateProduct}
-              className="px-4 py-2 rounded-xl bg-black text-white hover:bg-gray-900"
-            >
-              {tt(lang, "add")}
-            </button>
-          </div>
-        }
-      >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field
-            label="Title"
-            value={productForm.title}
-            onChange={(v) => setProductForm((s) => ({ ...s, title: v }))}
-            placeholder="Item name…"
-          />
-          <Field
-            label="Price (optional)"
-            value={productForm.price}
-            onChange={(v) => setProductForm((s) => ({ ...s, price: v }))}
-            placeholder="e.g. 25"
-          />
-          <Field
-            label="Currency"
-            value={productForm.currency}
-            onChange={(v) => setProductForm((s) => ({ ...s, currency: v }))}
-            placeholder="USD"
-          />
-          <Field
-            label="Location (optional)"
-            value={productForm.location}
-            onChange={(v) => setProductForm((s) => ({ ...s, location: v }))}
-            placeholder="Alexandria, VA"
-          />
-          <div className="md:col-span-2">
-            <label className="text-sm font-medium">Description</label>
-            <textarea
-              className="mt-1 w-full min-h-[110px] border rounded-2xl p-3 outline-none focus:ring-2 focus:ring-black/10"
-              value={productForm.description}
-              onChange={(e) =>
-                setProductForm((s) => ({ ...s, description: e.target.value }))
-              }
-              placeholder="Describe the product…"
-            />
-          </div>
-          <div className="md:col-span-2">
-            <label className="text-sm font-medium">
-              Images URLs (one per line)
-            </label>
-            <textarea
-              className="mt-1 w-full min-h-[110px] border rounded-2xl p-3 outline-none focus:ring-2 focus:ring-black/10"
-              value={productForm.imagesText}
-              onChange={(e) =>
-                setProductForm((s) => ({ ...s, imagesText: e.target.value }))
-              }
-              placeholder={`https://...\nhttps://...`}
-            />
-          </div>
         </div>
       </Modal>
 

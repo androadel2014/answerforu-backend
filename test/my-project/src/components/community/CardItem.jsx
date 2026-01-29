@@ -21,7 +21,6 @@ import {
   Wrench,
   MoreVertical,
 } from "lucide-react";
-
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL ||
   import.meta.env.VITE_API_BASE ||
@@ -609,34 +608,11 @@ export function CardItem({
 
     (async () => {
       try {
-        const urls = [
-          `${API_BASE}/api/profile/${ownerId}`,
-          `${API_BASE}/api/profile/u/${ownerId}`,
-          `${API_BASE}/api/users/${ownerId}`,
-          `${API_BASE}/api/user/${ownerId}`,
-          `${API_BASE}/api/profiles/${ownerId}`,
-          `${API_BASE}/api/users/${ownerId}/profile`,
-          `${API_BASE}/api/user/${ownerId}/profile`,
-        ];
+        const res = await fetch(`${API_BASE}/api/profile/${ownerId}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
 
-        let data = null;
-
-        for (const u of urls) {
-          try {
-            const res = await fetch(u, { method: "GET" });
-            const j = await res.json().catch(() => ({}));
-            if (res.ok) {
-              data = j;
-              break;
-            }
-          } catch {}
-        }
-
-        if (!data) return;
-
-        const src =
-          data?.profile || data?.user_profile || data?.user || data?.me || data;
-
+        const src = data?.profile || data?.user_profile || data?.user || data;
         const name =
           src?.display_name ||
           src?.displayName ||

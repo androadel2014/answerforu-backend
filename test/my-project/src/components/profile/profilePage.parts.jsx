@@ -30,7 +30,6 @@ export const tt = (lang, key) => {
   const en = (STR && STR.en) || {};
   const v = dict[key] ?? en[key];
 
-  // ✅ fallbacks for new avatar UI (won't break if keys missing)
   if (v !== undefined) return v;
 
   const fallback = {
@@ -43,6 +42,8 @@ export const tt = (lang, key) => {
         : lang === "es"
         ? "¿Seguro que deseas eliminar?"
         : "Are you sure you want to delete?",
+    listings:
+      lang === "ar" ? "الإعلانات" : lang === "es" ? "Anuncios" : "Listings",
   };
 
   return fallback[key] || key;
@@ -494,11 +495,21 @@ export function StatsPanel({
   followers,
   following,
   posts,
-  services,
-  products,
+  myListingsCount, // ✅ الرقم اللي تحت
 }) {
   const rounded = Math.round(Number(ratingAvg || 0));
   const safeAvg = Number.isFinite(Number(ratingAvg)) ? Number(ratingAvg) : 0;
+
+  const toCount = (v) => {
+    if (Array.isArray(v)) return v.length;
+    if (v === null || v === undefined) return 0;
+    const n = parseInt(String(v).replace(/[^\d-]/g, ""), 10);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const postsCount = toCount(posts);
+
+  const listingsCount = toCount(myListingsCount);
 
   return (
     <div className="rounded-2xl border bg-gradient-to-b from-gray-50 to-white p-4 shadow-sm">
@@ -549,21 +560,17 @@ export function StatsPanel({
         />
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-3">
+      <div className="mt-3 grid grid-cols-2 gap-3">
         <StatMini
           icon={<MessageCircle size={16} />}
           label={tt(lang, "posts")}
-          value={posts}
+          value={postsCount}
         />
-        <StatMini
-          icon={<Briefcase size={16} />}
-          label={tt(lang, "services")}
-          value={services}
-        />
+
         <StatMini
           icon={<Store size={16} />}
-          label={tt(lang, "products")}
-          value={products}
+          label={tt(lang, "listings")}
+          value={listingsCount}
         />
       </div>
 
@@ -590,14 +597,19 @@ export function StatCard({ icon, label, value }) {
   );
 }
 
-export function StatMini({ icon, label, value }) {
+export function StatMini({ icon, label, value, sub }) {
   return (
     <div className="rounded-2xl border bg-white p-3 hover:bg-gray-50 transition">
       <div className="flex items-center justify-between gap-2">
         <div className="text-[11px] font-semibold text-gray-600">{label}</div>
         <div className="text-gray-500">{icon}</div>
       </div>
+
       <div className="mt-1 text-base font-extrabold text-gray-900">{value}</div>
+
+      {sub ? (
+        <div className="mt-0.5 text-[11px] text-gray-500 truncate">{sub}</div>
+      ) : null}
     </div>
   );
 }
@@ -901,7 +913,6 @@ export function PostsTab({
             canAct={canAct}
             onDelete={() => onDelete(rawId)}
             onUpdate={(payload) => onUpdate(rawId, payload)}
-            // inject (from same file)
             tt={tt}
             Modal={Modal}
             toastConfirm={toastConfirm}

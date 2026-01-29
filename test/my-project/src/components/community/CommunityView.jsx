@@ -430,6 +430,8 @@ export default function CommunityView({ lang = "en" }) {
   const [tab, setTab] = useState("all");
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
+  const [myCount, setMyCount] = useState(null);
+
   const [page, setPage] = useState(1);
 
   const [isLoggedIn, setIsLoggedIn] = useState(!!getToken());
@@ -437,6 +439,8 @@ export default function CommunityView({ lang = "en" }) {
     const onStorage = () => setIsLoggedIn(!!getToken());
     window.addEventListener("storage", onStorage);
     const t = setInterval(() => setIsLoggedIn(!!getToken()), 900);
+    loadMyCount();
+
     return () => {
       window.removeEventListener("storage", onStorage);
       clearInterval(t);
@@ -679,6 +683,7 @@ export default function CommunityView({ lang = "en" }) {
 
       if (tab !== type) setTab(type);
       setTimeout(load, 150);
+      setTimeout(loadMyCount, 200);
     } catch (e) {
       console.error(e);
       toast.error(L.somethingWrong);
@@ -688,6 +693,100 @@ export default function CommunityView({ lang = "en" }) {
   /* =========================
      Loading
   ========================= */
+  async function loadMyCount() {
+    try {
+      const token = getToken();
+      if (!token) {
+        setMyCount(null);
+        return;
+      }
+
+      // ✅ decode user id safely
+      let me = "";
+      try {
+        const payload = JSON.parse(atob((token || "").split(".")[1] || ""));
+        me = String(payload?.id || "");
+      } catch {
+        me = "";
+      }
+      if (!me) {
+        setMyCount(null);
+        return;
+      }
+
+      const getOwner = (x) =>
+        x?.created_by ??
+        x?.createdBy ??
+        x?.user_id ??
+        x?.userId ??
+        x?.owner_id ??
+        x?.ownerId ??
+        0;
+
+      // ✅ use Set to avoid double counting
+      const keys = new Set();
+
+      const addMine = (arr, typeHint) => {
+        const a = Array.isArray(arr) ? arr : [];
+        for (const x of a) {
+          if (!x) continue;
+          if (String(getOwner(x)) !== String(me)) continue;
+
+          const t = String(x?.type || typeHint || "").toLowerCase() || typeHint;
+
+          const rawId =
+            x?.id ?? x?.listing_id ?? x?.place_id ?? x?.group_id ?? x?.item_id;
+
+          const num = String(rawId || "").includes("_")
+            ? String(rawId || "").split("_")[1]
+            : String(rawId || "");
+
+          if (!num) continue;
+
+          keys.add(`${t}:${num}`);
+        }
+      };
+
+      // ✅ places
+      {
+        const out = await tryFetchJSON(`${API_BASE}/api/community/places`, {
+          method: "GET",
+          headers: { ...authHeaders() },
+        });
+        const arr = out.ok ? extractArray(out.data) : [];
+        addMine(arr, "places");
+      }
+
+      // ✅ groups
+      {
+        const out = await tryFetchJSON(`${API_BASE}/api/community/groups`, {
+          method: "GET",
+          headers: { ...authHeaders() },
+        });
+        const arr = out.ok ? extractArray(out.data) : [];
+        addMine(arr, "groups");
+      }
+
+      // ✅ marketplace types
+      for (const t of ["services", "jobs", "housing", "products"]) {
+        const out = await tryFetchJSON(
+          [
+            `${API_BASE}/api/listings?type=${t}`,
+            `${API_BASE}/api/marketplace/listings?type=${t}`,
+          ],
+          { method: "GET", headers: { ...authHeaders() } }
+        );
+
+        const arr = out.ok ? extractArray(out.data) : [];
+        addMine(arr, t);
+      }
+
+      setMyCount(keys.size);
+    } catch {
+      setMyCount(null);
+    }
+  }
+
   async function load() {
     setPage(1);
     setLoading(true);
@@ -914,6 +1013,7 @@ export default function CommunityView({ lang = "en" }) {
 
       toast.success(L.deleted);
       load();
+      loadMyCount();
     } catch (e) {
       console.error(e);
       toast.error(L.deleteFailed);
@@ -988,6 +1088,15 @@ export default function CommunityView({ lang = "en" }) {
             <p className="mt-1 text-sm sm:text-base text-gray-600">
               {L.exploreDesc}
             </p>
+            {myCount !== null ? (
+              <div className="mt-2 text-sm font-semibold text-gray-800">
+                {lang === "ar"
+                  ? `عدد إعلاناتي (Marketplace): ${myCount}`
+                  : lang === "es"
+                  ? `Mis anuncios (Marketplace): ${myCount}`
+                  : `My listings (Marketplace): ${myCount}`}
+              </div>
+            ) : null}
 
             <div className="mt-3 hidden sm:inline-flex flex-wrap items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 shadow-sm">
               <span className="text-xs font-semibold text-gray-600">
