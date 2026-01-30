@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import PostComposer from "../components/feed/PostComposer";
+import { MessageCircle } from "lucide-react";
 
 import ProfilePageBody from "./profile/ProfilePageBody";
 
@@ -1220,83 +1221,114 @@ export function ProfilePage({ lang = "en" }) {
     [reviews]
   );
 
+  async function onMessageUser() {
+    if (!canAct) return toast.error(tt(lang, "loginFirst") || "Login first");
+
+    const otherId = Number(String(userId || "").trim());
+    if (!Number.isFinite(otherId) || otherId <= 0) return;
+    if (computedIsMe) return;
+
+    try {
+      const r = await tryFetchFallback([`${API_BASE}/api/chat/threads`], {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          other_user_id: otherId,
+          context_type: "profile",
+          context_id: String(otherId),
+          context_label: displayName,
+        }),
+      });
+
+      const thread = r?.thread || r?.data?.thread || r?.item || r;
+
+      window.dispatchEvent(
+        new CustomEvent("a4u:chat-open", { detail: { thread } })
+      );
+    } catch (e) {
+      toast.error(e.message || "Chat failed");
+    }
+  }
+
   return (
-    <ProfilePageBody
-      lang={lang}
-      dir={dir}
-      API_BASE={API_BASE}
-      navigate={navigate}
-      loading={loading}
-      profile={profile}
-      stats={stats}
-      isFollowing={isFollowing}
-      canEdit={canEdit}
-      canAct={canAct}
-      tab={tab}
-      setTab={setTab}
-      tabLoading={tabLoading}
-      posts={posts}
-      reviews={reviewsUI}
-      countPosts={countPosts}
-      countReviews={countReviews}
-      ratingAvg={ratingAvg}
-      followers={followers}
-      following={following}
-      cover={cover}
-      avatar={avatar}
-      displayName={displayName}
-      username={username}
-      verified={verified}
-      onShare={() => {
-        const url = window.location.href;
-        const text = `Profile on AnswerForU: ${displayName}`;
-        (async () => {
-          try {
-            if (navigator.share) {
-              await navigator.share({ title: "AnswerForU", text, url });
-              toast.success(tt(lang, "shared"));
-              return;
-            }
-            await navigator.clipboard.writeText(url);
-            toast.success(tt(lang, "linkCopied"));
-          } catch {
+    <>
+      <ProfilePageBody
+        lang={lang}
+        dir={dir}
+        API_BASE={API_BASE}
+        navigate={navigate}
+        loading={loading}
+        profile={profile}
+        stats={stats}
+        isFollowing={isFollowing}
+        canEdit={canEdit}
+        canAct={canAct}
+        tab={tab}
+        setTab={setTab}
+        tabLoading={tabLoading}
+        posts={posts}
+        reviews={reviewsUI}
+        countPosts={countPosts}
+        countReviews={countReviews}
+        ratingAvg={ratingAvg}
+        followers={followers}
+        following={following}
+        cover={cover}
+        avatar={avatar}
+        displayName={displayName}
+        username={username}
+        verified={verified}
+        onShare={() => {
+          const url = window.location.href;
+          const text = `Profile on AnswerForU: ${displayName}`;
+          (async () => {
             try {
+              if (navigator.share) {
+                await navigator.share({ title: "AnswerForU", text, url });
+                toast.success(tt(lang, "shared"));
+                return;
+              }
               await navigator.clipboard.writeText(url);
               toast.success(tt(lang, "linkCopied"));
             } catch {
-              toast("Copy link: " + url);
+              try {
+                await navigator.clipboard.writeText(url);
+                toast.success(tt(lang, "linkCopied"));
+              } catch {
+                toast("Copy link: " + url);
+              }
             }
-          }
-        })();
-      }}
-      onFollowToggle={onFollowToggle}
-      onDeletePost={onDeletePost}
-      onUpdatePost={onUpdatePost}
-      refreshCurrentTab={refreshCurrentTab}
-      onSaveProfile={onSaveProfile}
-      onCreateReview={() => {}}
-      editOpen={editOpen}
-      setEditOpen={setEditOpen}
-      addReviewOpen={addReviewOpen}
-      setAddReviewOpen={setAddReviewOpen}
-      editForm={editForm}
-      setEditForm={setEditForm}
-      reviewForm={reviewForm}
-      setReviewForm={setReviewForm}
-      PostCardComp={PostCard}
-      PostComposerComp={PostComposer}
-      onUploadAvatar={onUploadAvatar}
-      onDeleteAvatar={onDeleteAvatar}
-      onUploadCover={onUploadCover}
-      onDeleteCover={onDeleteCover}
-      listingsAll={listingsAll}
-      listingsLoading={listingsLoading}
-      countListingsAll={countListingsAll}
-      onAddListingClick={onAddListingClick}
-      onEditListing={onEditListing}
-      onDeleteListing={onDeleteListing}
-      listingsOwnerId={listingsOwnerId}
-    />
+          })();
+        }}
+        onFollowToggle={onFollowToggle}
+        onDeletePost={onDeletePost}
+        onUpdatePost={onUpdatePost}
+        refreshCurrentTab={refreshCurrentTab}
+        onSaveProfile={onSaveProfile}
+        onCreateReview={() => {}}
+        editOpen={editOpen}
+        setEditOpen={setEditOpen}
+        addReviewOpen={addReviewOpen}
+        setAddReviewOpen={setAddReviewOpen}
+        editForm={editForm}
+        setEditForm={setEditForm}
+        reviewForm={reviewForm}
+        setReviewForm={setReviewForm}
+        PostCardComp={PostCard}
+        PostComposerComp={PostComposer}
+        onUploadAvatar={onUploadAvatar}
+        onDeleteAvatar={onDeleteAvatar}
+        onUploadCover={onUploadCover}
+        onDeleteCover={onDeleteCover}
+        listingsAll={listingsAll}
+        listingsLoading={listingsLoading}
+        countListingsAll={countListingsAll}
+        onAddListingClick={onAddListingClick}
+        onEditListing={onEditListing}
+        onDeleteListing={onDeleteListing}
+        listingsOwnerId={listingsOwnerId}
+      />
+    </>
   );
 }
 

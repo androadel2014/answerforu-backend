@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Toaster } from "react-hot-toast";
 import ProfilePage from "./components/ProfilePage";
 import { initLang, applyLang } from "./lib/lang";
+import ChatDock from "./components/chat/ChatDock";
 
 import {
   BrowserRouter as Router,
@@ -194,6 +195,8 @@ function AppContent() {
 
         <Footer lang={lang} />
       </div>
+      <ChatDock lang={lang} dockSide={lang === "ar" ? "left" : "right"} />
+
       <MobileNav lang={lang} toggleMenu={() => setMenuOpen(true)} />
 
       <MobileMenuOverlay

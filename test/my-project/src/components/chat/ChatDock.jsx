@@ -1,5 +1,11 @@
 // src/components/chat/ChatDock.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   MessageCircle,
@@ -10,6 +16,7 @@ import {
   ArrowRight,
   SendHorizontal,
 } from "lucide-react";
+import { authHeaders } from "../profile/profilePage.parts";
 
 const cn = (...a) => a.filter(Boolean).join(" ");
 
@@ -20,12 +27,40 @@ const API_BASE =
 
 const getToken = () => localStorage.getItem("token") || "";
 
+function absMedia(u) {
+  const s = String(u || "").trim();
+  if (!s) return "";
+  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+  return `${API_BASE}${s.startsWith("/") ? "" : "/"}${s}`;
+}
+
+function getMeIdFromToken() {
+  try {
+    const t = getToken();
+    if (!t) return null;
+    const parts = t.split(".");
+    if (parts.length < 2) return null;
+
+    const payloadJson = atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"));
+    const payload = JSON.parse(payloadJson || "{}");
+
+    const id =
+      payload?.id ??
+      payload?.userId ??
+      payload?.user_id ??
+      payload?.user?.id ??
+      null;
+
+    const n = Number(id);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
 async function apiGet(url) {
   const res = await fetch(`${API_BASE}${url}`, {
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${getToken()}`,
-    },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
   });
   if (!res.ok) throw new Error(`GET ${url} failed`);
   return res.json();
@@ -34,10 +69,7 @@ async function apiGet(url) {
 async function apiPost(url, body) {
   const res = await fetch(`${API_BASE}${url}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${getToken()}`,
-    },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body || {}),
   });
   if (!res.ok) throw new Error(`POST ${url} failed`);
@@ -102,13 +134,15 @@ function ChatWindow({
   const other = thread?.other || {};
   const dir = lang === "ar" ? "rtl" : "ltr";
 
+  const otherAvatar = absMedia(other?.avatar_url);
+
   const load = async () => {
     try {
       const data = await apiGet(`/api/chat/threads/${thread.id}/messages`);
       setMessages(Array.isArray(data?.items) ? data.items : []);
       setLoading(false);
       apiPost(`/api/chat/threads/${thread.id}/read`, {}).catch(() => {});
-    } catch (e) {
+    } catch {
       setLoading(false);
     }
   };
@@ -136,8 +170,7 @@ function ChatWindow({
       const item = r?.item;
       if (item) setMessages((prev) => [...prev, item]);
       else await load();
-    } catch (e) {
-      // restore draft if failed
+    } catch {
       setDraft(text);
     } finally {
       setSending(false);
@@ -156,7 +189,6 @@ function ChatWindow({
       style={dockSide === "right" ? { right: 18, width } : { left: 18, width }}
     >
       <div className="rounded-2xl overflow-hidden bg-white border border-slate-200 shadow-[0_20px_60px_rgba(0,0,0,0.18)]">
-        {/* header */}
         <div
           className={cn(
             "h-12 flex items-center justify-between bg-slate-900 text-white",
@@ -166,9 +198,9 @@ function ChatWindow({
         >
           <div className="flex items-center gap-2 min-w-0">
             <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center overflow-hidden">
-              {other?.avatar_url ? (
+              {otherAvatar ? (
                 <img
-                  src={other.avatar_url}
+                  src={otherAvatar}
                   alt=""
                   className="h-full w-full object-cover"
                 />
@@ -208,7 +240,6 @@ function ChatWindow({
           </div>
         </div>
 
-        {/* body */}
         <div
           ref={bodyRef}
           className="h-[340px] overflow-y-auto px-3 py-3 bg-slate-50"
@@ -232,7 +263,6 @@ function ChatWindow({
           )}
         </div>
 
-        {/* footer */}
         <div className="p-2 border-t border-slate-200 bg-white">
           <div className="flex items-end gap-2">
             <textarea
@@ -269,14 +299,7 @@ function ChatWindow({
   );
 }
 
-function ChatInbox({
-  lang,
-  open,
-  onClose,
-  onOpenThread,
-  meId,
-  dockSide = "right",
-}) {
+function ChatInbox({ lang, open, onClose, onOpenThread, dockSide = "right" }) {
   const [q, setQ] = useState("");
   const [threads, setThreads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -288,7 +311,7 @@ function ChatInbox({
       const data = await apiGet(`/api/chat/threads`);
       setThreads(Array.isArray(data?.items) ? data.items : []);
       setLoading(false);
-    } catch (e) {
+    } catch {
       setLoading(false);
     }
   };
@@ -363,6 +386,7 @@ function ChatInbox({
             <div className="divide-y divide-slate-100">
               {filtered.map((t) => {
                 const other = t?.other || {};
+                const otherAvatar = absMedia(other?.avatar_url);
                 return (
                   <button
                     key={t.id}
@@ -370,9 +394,9 @@ function ChatInbox({
                     onClick={() => onOpenThread(t)}
                   >
                     <div className="h-10 w-10 rounded-full bg-slate-900 text-white flex items-center justify-center overflow-hidden">
-                      {other?.avatar_url ? (
+                      {otherAvatar ? (
                         <img
-                          src={other.avatar_url}
+                          src={otherAvatar}
                           alt=""
                           className="h-full w-full object-cover"
                         />
@@ -416,230 +440,6 @@ function ChatInbox({
   return createPortal(panel, document.body);
 }
 
-export default function ChatDock({
-  lang = "ar",
-  dockSide = "right",
-  maxOpen = 3,
-}) {
-  const token = getToken();
-  const [meId, setMeId] = useState(null);
-
-  const [inboxOpen, setInboxOpen] = useState(false);
-  const [openThreads, setOpenThreads] = useState([]); // [{id, other, ...}]
-  const [minimized, setMinimized] = useState([]); // thread ids
-  const [unreadTotal, setUnreadTotal] = useState(0);
-
-  const isAuthed = !!token;
-
-  // resolve me id (lightweight)
-  useEffect(() => {
-    if (!isAuthed) {
-      setMeId(null);
-      return;
-    }
-    apiGet(`/api/users/me`)
-      .then((d) => setMeId(d?.user?.id || d?.id || null))
-      .catch(() => setMeId(null));
-  }, [isAuthed]);
-
-  const refreshUnread = async () => {
-    if (!isAuthed) return;
-    try {
-      const d = await apiGet(`/api/chat/summary`);
-      setUnreadTotal(Number(d?.unread_total || 0));
-    } catch (e) {}
-  };
-
-  // poll unread badge
-  useInterval(
-    () => {
-      refreshUnread();
-    },
-    isAuthed ? 10000 : null
-  );
-
-  useEffect(() => {
-    refreshUnread();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthed]);
-
-  const openThread = (t) => {
-    if (!t?.id) return;
-
-    setInboxOpen(false);
-
-    setOpenThreads((prev) => {
-      const exists = prev.some((x) => String(x.id) === String(t.id));
-      if (exists) return prev;
-
-      const next = [t, ...prev].slice(0, maxOpen);
-      return next;
-    });
-
-    setMinimized((prev) => prev.filter((id) => String(id) !== String(t.id)));
-  };
-
-  const closeThread = (id) => {
-    setOpenThreads((prev) => prev.filter((t) => String(t.id) !== String(id)));
-    setMinimized((prev) => prev.filter((x) => String(x) !== String(id)));
-  };
-
-  const minimizeThread = (id) => {
-    setMinimized((prev) => {
-      if (prev.some((x) => String(x) === String(id))) return prev;
-      return [...prev, id];
-    });
-  };
-
-  const restoreThread = (id) => {
-    setMinimized((prev) => prev.filter((x) => String(x) !== String(id)));
-  };
-
-  const dockDir = lang === "ar" ? "rtl" : "ltr";
-
-  // windows order: keep most recent left->right for right dock, and vice versa
-  const visibleThreads = openThreads.filter(
-    (t) => !minimized.some((id) => String(id) === String(t.id))
-  );
-
-  // position stacking
-  const baseOffset = 18;
-  const gap = 10;
-  const winWidth = 320;
-
-  const button = (
-    <button
-      className={cn(
-        "fixed z-[99970] bottom-[92px] md:bottom-[22px] h-12 w-12 rounded-2xl shadow-lg flex items-center justify-center",
-        "bg-slate-900 text-white hover:opacity-95"
-      )}
-      style={dockSide === "right" ? { right: 18 } : { left: 18 }}
-      onClick={() => setInboxOpen(true)}
-      title="Messages"
-    >
-      <MessageCircle className="h-5 w-5" />
-      {!!unreadTotal && (
-        <span className="absolute -top-1 -right-1 min-w-[22px] h-[22px] px-2 rounded-full bg-rose-600 text-white text-xs flex items-center justify-center">
-          {unreadTotal > 99 ? "99+" : unreadTotal}
-        </span>
-      )}
-    </button>
-  );
-
-  const minimizedBar =
-    minimized.length === 0 ? null : (
-      <div
-        className={cn(
-          "fixed z-[99975] bottom-[92px] md:bottom-[22px] h-12 flex items-center gap-2",
-          dockSide === "right" ? "right-[78px]" : "left-[78px]"
-        )}
-        dir={dockDir}
-      >
-        {minimized.slice(0, 6).map((id) => {
-          const t = openThreads.find((x) => String(x.id) === String(id));
-          const name = t?.other?.name || "Chat";
-          return (
-            <button
-              key={id}
-              onClick={() => restoreThread(id)}
-              className="h-12 max-w-[180px] px-3 rounded-2xl bg-white border border-slate-200 shadow-sm hover:bg-slate-50 flex items-center gap-2"
-              title={name}
-            >
-              <div className="h-8 w-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-semibold">
-                {name.slice(0, 1).toUpperCase()}
-              </div>
-              <div className="text-sm font-semibold text-slate-900 truncate">
-                {name}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    );
-
-  // render chat windows (desktop)
-  const windows = visibleThreads.map((t, idx) => {
-    const offset = idx * (winWidth + gap);
-    const style =
-      dockSide === "right"
-        ? { right: baseOffset + offset, width: winWidth }
-        : { left: baseOffset + offset, width: winWidth };
-
-    return (
-      <div
-        key={t.id}
-        className="hidden md:block"
-        style={{ position: "fixed", bottom: 0, zIndex: 99990, ...style }}
-      >
-        <ChatWindow
-          lang={lang}
-          thread={t}
-          meId={meId}
-          onClose={() => closeThread(t.id)}
-          onMinimize={() => minimizeThread(t.id)}
-          dockSide={dockSide}
-          width={winWidth}
-        />
-      </div>
-    );
-  });
-
-  // mobile: open only latest one as fullscreen drawer
-  const mobileActive = visibleThreads[0] || null;
-
-  const mobileDrawer = mobileActive ? (
-    <div className="fixed inset-0 z-[99990] md:hidden bg-white">
-      <div className="h-14 px-3 border-b border-slate-200 flex items-center justify-between bg-white">
-        <button
-          className="h-10 w-10 rounded-2xl hover:bg-slate-100 flex items-center justify-center"
-          onClick={() => closeThread(mobileActive.id)}
-          title="Back"
-        >
-          {dockSide === "right" ? (
-            <ArrowRight className="h-5 w-5" />
-          ) : (
-            <ArrowLeft className="h-5 w-5" />
-          )}
-        </button>
-        <div className="font-semibold truncate">
-          {mobileActive?.other?.name || "Chat"}
-        </div>
-        <button
-          className="h-10 w-10 rounded-2xl hover:bg-slate-100 flex items-center justify-center"
-          onClick={() => minimizeThread(mobileActive.id)}
-          title="Minimize"
-        >
-          <Minus className="h-5 w-5" />
-        </button>
-      </div>
-
-      <div className="h-[calc(100vh-56px)]">
-        {/* reuse ChatWindow layout but simplified */}
-        <MobileChatBody lang={lang} thread={mobileActive} meId={meId} />
-      </div>
-    </div>
-  ) : null;
-
-  if (!isAuthed) return null;
-
-  return (
-    <>
-      {button}
-      {minimizedBar}
-      {windows}
-      <ChatInbox
-        lang={lang}
-        open={inboxOpen}
-        onClose={() => setInboxOpen(false)}
-        onOpenThread={openThread}
-        meId={meId}
-        dockSide={dockSide}
-      />
-      {mobileDrawer}
-    </>
-  );
-}
-
 function MobileChatBody({ lang, thread, meId }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -655,7 +455,7 @@ function MobileChatBody({ lang, thread, meId }) {
       setMessages(Array.isArray(data?.items) ? data.items : []);
       setLoading(false);
       apiPost(`/api/chat/threads/${thread.id}/read`, {}).catch(() => {});
-    } catch (e) {
+    } catch {
       setLoading(false);
     }
   };
@@ -683,7 +483,7 @@ function MobileChatBody({ lang, thread, meId }) {
       const item = r?.item;
       if (item) setMessages((prev) => [...prev, item]);
       else await load();
-    } catch (e) {
+    } catch {
       setDraft(text);
     } finally {
       setSending(false);
@@ -751,5 +551,233 @@ function MobileChatBody({ lang, thread, meId }) {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ChatDock({
+  lang = "ar",
+  dockSide = "right",
+  maxOpen = 3,
+}) {
+  const token = getToken();
+  const [meId, setMeId] = useState(null);
+
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const [openThreads, setOpenThreads] = useState([]);
+  const [minimized, setMinimized] = useState([]);
+  const [unreadTotal, setUnreadTotal] = useState(0);
+
+  const isAuthed = !!token;
+
+  useEffect(() => {
+    if (!isAuthed) {
+      setMeId(null);
+      return;
+    }
+    setMeId(getMeIdFromToken());
+  }, [isAuthed, token]);
+
+  const refreshUnread = async () => {
+    if (!isAuthed) return;
+    try {
+      const d = await apiGet(`/api/chat/summary`);
+      setUnreadTotal(Number(d?.unread_total || 0));
+    } catch {}
+  };
+
+  useInterval(() => refreshUnread(), isAuthed ? 10000 : null);
+
+  useEffect(() => {
+    refreshUnread();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthed]);
+
+  const openThread = useCallback(
+    (t) => {
+      if (!t?.id) return;
+
+      setInboxOpen(false);
+
+      setOpenThreads((prev) => {
+        const exists = prev.some((x) => String(x.id) === String(t.id));
+        if (exists) return prev;
+        return [t, ...prev].slice(0, maxOpen);
+      });
+
+      setMinimized((prev) => prev.filter((id) => String(id) !== String(t.id)));
+    },
+    [maxOpen]
+  );
+
+  useEffect(() => {
+    const onOpen = (ev) => {
+      const thread = ev?.detail?.thread;
+      if (thread?.id) openThread(thread);
+      else setInboxOpen(true);
+    };
+
+    window.addEventListener("a4u:chat-open", onOpen);
+    return () => window.removeEventListener("a4u:chat-open", onOpen);
+  }, [openThread]);
+
+  const closeThread = (id) => {
+    setOpenThreads((prev) => prev.filter((t) => String(t.id) !== String(id)));
+    setMinimized((prev) => prev.filter((x) => String(x) !== String(id)));
+  };
+
+  const minimizeThread = (id) => {
+    setMinimized((prev) => {
+      if (prev.some((x) => String(x) === String(id))) return prev;
+      return [...prev, id];
+    });
+  };
+
+  const restoreThread = (id) => {
+    setMinimized((prev) => prev.filter((x) => String(x) !== String(id)));
+  };
+
+  const visibleThreads = openThreads.filter(
+    (t) => !minimized.some((id) => String(id) === String(t.id))
+  );
+
+  const baseOffset = 18;
+  const gap = 10;
+  const winWidth = 320;
+
+  // ✅ ONLY the chat icon (no "راسلني" button هنا)
+  const button = (
+    <button
+      className={cn(
+        "fixed z-[99970] bottom-[92px] md:bottom-[22px] h-12 w-12 rounded-2xl shadow-lg flex items-center justify-center",
+        "bg-slate-900 text-white hover:opacity-95"
+      )}
+      style={dockSide === "right" ? { right: 18 } : { left: 18 }}
+      onClick={() => setInboxOpen(true)}
+      title="Messages"
+    >
+      <MessageCircle className="h-5 w-5" />
+      {!!unreadTotal && (
+        <span className="absolute -top-1 -right-1 min-w-[22px] h-[22px] px-2 rounded-full bg-rose-600 text-white text-xs flex items-center justify-center">
+          {unreadTotal > 99 ? "99+" : unreadTotal}
+        </span>
+      )}
+    </button>
+  );
+
+  const minimizedBar =
+    minimized.length === 0 ? null : (
+      <div
+        className={cn(
+          "fixed z-[99975] bottom-[92px] md:bottom-[22px] h-12 flex items-center gap-2",
+          dockSide === "right" ? "right-[78px]" : "left-[78px]"
+        )}
+      >
+        {minimized.slice(0, 6).map((id) => {
+          const t = openThreads.find((x) => String(x.id) === String(id));
+          const name = t?.other?.name || "Chat";
+          const otherAvatar = absMedia(t?.other?.avatar_url);
+          return (
+            <button
+              key={id}
+              onClick={() => restoreThread(id)}
+              className="h-12 max-w-[180px] px-3 rounded-2xl bg-white border border-slate-200 shadow-sm hover:bg-slate-50 flex items-center gap-2"
+              title={name}
+            >
+              <div className="h-8 w-8 rounded-full bg-slate-900 text-white flex items-center justify-center overflow-hidden text-xs font-semibold">
+                {otherAvatar ? (
+                  <img
+                    src={otherAvatar}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  name.slice(0, 1).toUpperCase()
+                )}
+              </div>
+              <div className="text-sm font-semibold text-slate-900 truncate">
+                {name}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    );
+
+  const windows = visibleThreads.map((t, idx) => {
+    const offset = idx * (winWidth + gap);
+    const style =
+      dockSide === "right"
+        ? { right: baseOffset + offset, width: winWidth }
+        : { left: baseOffset + offset, width: winWidth };
+
+    return (
+      <div
+        key={t.id}
+        className="hidden md:block"
+        style={{ position: "fixed", bottom: 0, zIndex: 99990, ...style }}
+      >
+        <ChatWindow
+          lang={lang}
+          thread={t}
+          meId={meId}
+          onClose={() => closeThread(t.id)}
+          onMinimize={() => minimizeThread(t.id)}
+          dockSide={dockSide}
+          width={winWidth}
+        />
+      </div>
+    );
+  });
+
+  const mobileActive = visibleThreads[0] || null;
+
+  const mobileDrawer = mobileActive ? (
+    <div className="fixed inset-0 z-[99990] md:hidden bg-white">
+      <div className="h-14 px-3 border-b border-slate-200 flex items-center justify-between bg-white">
+        <button
+          className="h-10 w-10 rounded-2xl hover:bg-slate-100 flex items-center justify-center"
+          onClick={() => closeThread(mobileActive.id)}
+          title="Back"
+        >
+          {dockSide === "right" ? (
+            <ArrowRight className="h-5 w-5" />
+          ) : (
+            <ArrowLeft className="h-5 w-5" />
+          )}
+        </button>
+        <div className="font-semibold truncate">
+          {mobileActive?.other?.name || "Chat"}
+        </div>
+        <button
+          className="h-10 w-10 rounded-2xl hover:bg-slate-100 flex items-center justify-center"
+          onClick={() => minimizeThread(mobileActive.id)}
+          title="Minimize"
+        >
+          <Minus className="h-5 w-5" />
+        </button>
+      </div>
+
+      <div className="h-[calc(100vh-56px)]">
+        <MobileChatBody lang={lang} thread={mobileActive} meId={meId} />
+      </div>
+    </div>
+  ) : null;
+
+  if (!isAuthed) return null;
+
+  return (
+    <>
+      {button}
+      {minimizedBar}
+      {windows}
+      <ChatInbox
+        lang={lang}
+        open={inboxOpen}
+        onClose={() => setInboxOpen(false)}
+        onOpenThread={openThread}
+        dockSide={dockSide}
+      />
+      {mobileDrawer}
+    </>
   );
 }
