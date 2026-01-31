@@ -33,6 +33,173 @@ import {
 ========================= */
 const MARKET_TYPES = ["services", "products", "jobs", "housing"];
 
+/* =========================
+   ✅ Profile normalize + single source of truth
+   - Display reads from normalized "profile"
+   - Edit form is derived from the SAME normalized "profile"
+   - Save updates the SAME normalized "profile"
+========================= */
+function normalizeProfile(p) {
+  const x = p || {};
+
+  const username = String(
+    x.username ??
+      x.user_name ??
+      x.userName ??
+      x.handle ??
+      x.display_name ??
+      x.displayName ??
+      x.full_name ??
+      x.fullName ??
+      ""
+  ).trim();
+
+  const display_name = String(
+    x.display_name ??
+      x.displayName ??
+      x.full_name ??
+      x.fullName ??
+      x.name ??
+      x.username ??
+      username ??
+      ""
+  ).trim();
+
+  const phone = String(
+    x.phone ??
+      x.phone_number ??
+      x.phoneNumber ??
+      x.mobile ??
+      x.mobile_number ??
+      x.tel ??
+      ""
+  ).trim();
+
+  const whatsapp = String(
+    x.whatsapp ?? x.whatsApp ?? x.wa ?? x.whatsapp_number ?? ""
+  ).trim();
+
+  const location = String(
+    x.location ??
+      x.address ??
+      x.address_line ??
+      x.addressLine ??
+      x.city_state ??
+      ""
+  ).trim();
+
+  const bio = String(x.bio ?? x.about ?? x.summary ?? "").trim();
+
+  const website = String(x.website ?? x.site ?? x.url ?? "").trim();
+
+  const avatar_url = String(
+    x.avatar_url ?? x.avatar ?? x.avatarUrl ?? ""
+  ).trim();
+
+  const cover_url = String(x.cover_url ?? x.cover ?? x.coverUrl ?? "").trim();
+
+  return {
+    ...(x || {}),
+    username,
+    display_name,
+    phone,
+    whatsapp,
+    location,
+    bio,
+    website,
+    avatar_url,
+    cover_url,
+  };
+}
+
+function toEditFormFromProfile(p) {
+  const x = normalizeProfile(p || {});
+  return {
+    username: x.username || "",
+    display_name: x.display_name || "",
+    avatar_url: x.avatar_url || "",
+    cover_url: x.cover_url || "",
+    bio: x.bio || "",
+    location: x.location || "",
+    phone: x.phone || "",
+    whatsapp: x.whatsapp || "",
+    website: x.website || "",
+  };
+}
+
+function buildProfileSavePayload(editForm) {
+  const f = editForm || {};
+  return {
+    // ✅ username
+    username: f.username,
+    user_name: f.username,
+    handle: f.username,
+
+    // ✅ display name
+    display_name: f.display_name,
+    displayName: f.display_name,
+    full_name: f.display_name,
+    fullName: f.display_name,
+
+    // ✅ phone
+    phone: f.phone,
+    phone_number: f.phone,
+    phoneNumber: f.phone,
+    mobile: f.phone,
+
+    // ✅ whatsapp
+    whatsapp: f.whatsapp,
+    whatsApp: f.whatsapp,
+    wa: f.whatsapp,
+
+    // ✅ location/address
+    location: f.location,
+    address: f.location,
+    address_line: f.location,
+    addressLine: f.location,
+
+    // ✅ bio
+    bio: f.bio,
+    about: f.bio,
+    summary: f.bio,
+
+    // ✅ website
+    website: f.website,
+    site: f.website,
+    url: f.website,
+
+    // ✅ avatar/cover
+    avatar_url: f.avatar_url,
+    avatarUrl: f.avatar_url,
+    avatar: f.avatar_url,
+
+    cover_url: f.cover_url,
+    coverUrl: f.cover_url,
+    cover: f.cover_url,
+  };
+}
+
+function mergeProfileWithEditForm(prevProfile, editForm) {
+  const base = normalizeProfile(prevProfile || {});
+  const f = editForm || {};
+  const merged = {
+    ...base,
+    username: String(f.username ?? base.username ?? "").trim(),
+    display_name: String(f.display_name ?? base.display_name ?? "").trim(),
+    avatar_url: String(f.avatar_url ?? base.avatar_url ?? "").trim(),
+    cover_url: String(f.cover_url ?? base.cover_url ?? "").trim(),
+    bio: String(f.bio ?? base.bio ?? "").trim(),
+    location: String(f.location ?? base.location ?? "").trim(),
+    phone: String(f.phone ?? base.phone ?? "").trim(),
+    whatsapp: String(f.whatsapp ?? base.whatsapp ?? "").trim(),
+    website: String(f.website ?? base.website ?? "").trim(),
+  };
+  return normalizeProfile(merged);
+}
+
+/* =========================
+   Helpers
+========================= */
 function buildPrefixedId(type, id) {
   const t = String(type || "").toLowerCase();
   const n = id == null ? null : Number(id);
@@ -440,12 +607,10 @@ export function ProfilePage({ lang = "en" }) {
   const canEdit = canAct && (isMe || computedIsMe);
 
   const countPosts = Number(stats?.posts ?? posts.length ?? 0) || 0;
-
   const countReviews = Number(reviews?.length ?? 0) || 0;
 
   // ✅ listings belong to the PROFILE owner (the userId in URL)
   const listingsOwnerId = String(userId || "").trim();
-
   const countListingsAll = listingsAll.length || 0;
 
   useEffect(() => {
@@ -470,8 +635,10 @@ export function ProfilePage({ lang = "en" }) {
 
         if (dead) return;
 
-        const p =
+        const rawP =
           data?.profile || data?.user_profile || data?.user || data || null;
+        const p = normalizeProfile(rawP);
+
         const st = data?.stats || data?.profile_stats || null;
 
         setProfile(p);
@@ -499,17 +666,8 @@ export function ProfilePage({ lang = "en" }) {
           typeof data?.isFollowing === "boolean" ? data.isFollowing : false
         );
 
-        setEditForm({
-          username: p?.username || "",
-          display_name: p?.display_name || "",
-          avatar_url: p?.avatar_url || "",
-          cover_url: p?.cover_url || "",
-          bio: p?.bio || "",
-          location: p?.location || "",
-          phone: p?.phone || "",
-          whatsapp: p?.whatsapp || "",
-          website: p?.website || "",
-        });
+        // ✅ EDIT FORM comes from SAME normalized profile
+        setEditForm(toEditFormFromProfile(p));
       } catch (e) {
         toast.error(e.message || tt(lang, "failedLoadProfile"));
         setProfile(null);
@@ -724,8 +882,13 @@ export function ProfilePage({ lang = "en" }) {
         r?.profile?.cover_url ||
         r?.user_profile?.cover_url ||
         "";
-      setProfile((p) => ({ ...(p || {}), cover_url: nextUrl }));
+
+      // ✅ update SAME normalized profile
+      setProfile((prev) =>
+        normalizeProfile({ ...(prev || {}), cover_url: nextUrl })
+      );
       setEditForm((f) => ({ ...f, cover_url: nextUrl }));
+
       toast.success(tt(lang, "saved"));
     } catch (e) {
       toast.error(e.message || "Cover upload failed (backend route?)");
@@ -753,8 +916,11 @@ export function ProfilePage({ lang = "en" }) {
         { method: "DELETE", headers: { ...authHeaders() } }
       );
 
-      setProfile((p) => ({ ...(p || {}), cover_url: null }));
+      setProfile((prev) =>
+        normalizeProfile({ ...(prev || {}), cover_url: "" })
+      );
       setEditForm((f) => ({ ...f, cover_url: "" }));
+
       toast.success(tt(lang, "deleted"));
     } catch (e) {
       toast.error(e.message || "Delete cover failed (backend route?)");
@@ -785,8 +951,12 @@ export function ProfilePage({ lang = "en" }) {
         r?.profile?.avatar_url ||
         r?.user_profile?.avatar_url ||
         "";
-      setProfile((p) => ({ ...(p || {}), avatar_url: nextUrl }));
+
+      setProfile((prev) =>
+        normalizeProfile({ ...(prev || {}), avatar_url: nextUrl })
+      );
       setEditForm((f) => ({ ...f, avatar_url: nextUrl }));
+
       toast.success(tt(lang, "saved"));
     } catch (e) {
       toast.error(e.message || "Avatar upload failed");
@@ -814,8 +984,11 @@ export function ProfilePage({ lang = "en" }) {
         { method: "DELETE", headers: { ...authHeaders() } }
       );
 
-      setProfile((p) => ({ ...(p || {}), avatar_url: null }));
+      setProfile((prev) =>
+        normalizeProfile({ ...(prev || {}), avatar_url: "" })
+      );
       setEditForm((f) => ({ ...f, avatar_url: "" }));
+
       toast.success(tt(lang, "deleted"));
     } catch (e) {
       toast.error(e.message || "Delete avatar failed");
@@ -861,13 +1034,21 @@ export function ProfilePage({ lang = "en" }) {
 
   async function onSaveProfile() {
     if (!canEdit) return;
+
+    // ✅ optimistic: update displayed profile from SAME editForm immediately
+    setProfile((prev) => mergeProfileWithEditForm(prev, editForm));
+
     try {
-      const payload = { ...editForm };
+      const payload = buildProfileSavePayload(editForm);
+
       const r = await tryFetchFallback(
         [
           `${API_BASE}/api/profile/me`,
           `${API_BASE}/api/me/profile`,
           `${API_BASE}/api/user/profile/me`,
+          // extra fallbacks
+          `${API_BASE}/api/users/me`,
+          `${API_BASE}/api/user/me`,
         ],
         {
           method: "PUT",
@@ -875,9 +1056,37 @@ export function ProfilePage({ lang = "en" }) {
           body: JSON.stringify(payload),
         }
       );
+
       toast.success(tt(lang, "saved"));
-      setProfile(r.profile || r.user_profile || r.user || r);
+
+      const nextRaw = r?.profile || r?.user_profile || r?.user || r || {};
+      const next = normalizeProfile(nextRaw);
+
+      setProfile(next);
+      setEditForm(toEditFormFromProfile(next));
+
       setEditOpen(false);
+      // ✅ ensure we reflect DB truth after save (same source as display)
+      try {
+        const uid = String(userId || "").trim();
+        if (uid) {
+          const data = await tryFetchFallback(
+            [
+              `${API_BASE}/api/profile/${uid}`,
+              `${API_BASE}/api/profiles/${uid}`,
+              `${API_BASE}/api/user/${uid}/profile`,
+              `${API_BASE}/api/users/${uid}/profile`,
+              `${API_BASE}/api/users/${uid}`,
+            ],
+            { headers: { ...authHeaders() } }
+          );
+          const rawP =
+            data?.profile || data?.user_profile || data?.user || data || null;
+          const p = normalizeProfile(rawP);
+          setProfile(p);
+          setEditForm(toEditFormFromProfile(p));
+        }
+      } catch {}
     } catch (e) {
       toast.error(e.message || tt(lang, "saveFailed"));
     }
@@ -951,7 +1160,64 @@ export function ProfilePage({ lang = "en" }) {
     } catch {}
   }
 
-  // باقي handlers زي ما هي (delete/update posts + listings) … بدون تغيير
+  /* =========================
+     ✅ CREATE REVIEW (THIS FIXES "اكتب تقييم")
+  ========================= */
+  async function onCreateReview() {
+    if (!canAct) return toast.error(tt(lang, "loginFirst") || "Login first");
+
+    const uid = String(userId || "").trim();
+    if (!uid) return toast.error("Missing userId");
+    if (computedIsMe) return toast.error("مينفعش تقيم نفسك");
+
+    const ratingNum = Number(reviewForm?.rating ?? 0);
+    const rating = Math.max(
+      1,
+      Math.min(5, Number.isFinite(ratingNum) ? ratingNum : 5)
+    );
+    const comment = String(reviewForm?.comment ?? "").trim();
+
+    const payload = {
+      rating,
+      stars: rating,
+      value: rating,
+      comment,
+      text: comment,
+      body: comment,
+      message: comment,
+      target_user_id: Number(uid),
+      user_id: Number(uid),
+    };
+
+    try {
+      await tryFetchFallback(
+        [
+          `${API_BASE}/api/users/${uid}/reviews`,
+          `${API_BASE}/api/user/${uid}/reviews`,
+          `${API_BASE}/api/users/${uid}/ratings`,
+          `${API_BASE}/api/user/${uid}/ratings`,
+          `${API_BASE}/api/profile/${uid}/reviews`,
+          `${API_BASE}/api/profile/${uid}/ratings`,
+          `${API_BASE}/api/ratings/user/${uid}`,
+          `${API_BASE}/api/reviews/user/${uid}`,
+        ],
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      toast.success("تم إرسال التقييم");
+      setAddReviewOpen(false);
+      setReviewForm({ rating: 5, comment: "" });
+
+      setTab("reviews");
+      await refreshCurrentTab();
+    } catch (e) {
+      toast.error(e.message || "فشل إرسال التقييم (راجع endpoint في الباك)");
+    }
+  }
 
   async function onDeletePost(postId) {
     if (!canEdit) return;
@@ -1208,12 +1474,15 @@ export function ProfilePage({ lang = "en" }) {
   const followers = Number(stats?.followers ?? 0) || 0;
   const following = Number(stats?.following ?? 0) || 0;
 
-  const cover = absUrl(API_BASE, profile?.cover_url || "");
-  const avatar = absUrl(API_BASE, profile?.avatar_url || "");
+  const safeProfile = useMemo(() => normalizeProfile(profile || {}), [profile]);
 
-  const displayName = profile?.display_name || profile?.username || "User";
-  const username = profile?.username ? `@${profile.username}` : "";
-  const verified = !!profile?.is_verified;
+  const cover = absUrl(API_BASE, safeProfile.cover_url || "");
+  const avatar = absUrl(API_BASE, safeProfile.avatar_url || "");
+
+  const displayName =
+    safeProfile.display_name || safeProfile.username || "User";
+  const username = safeProfile.username ? `@${safeProfile.username}` : "";
+  const verified = !!safeProfile.is_verified;
 
   // ✅ always pass normalized reviews to body
   const reviewsUI = useMemo(
@@ -1258,7 +1527,7 @@ export function ProfilePage({ lang = "en" }) {
         API_BASE={API_BASE}
         navigate={navigate}
         loading={loading}
-        profile={profile}
+        profile={safeProfile}
         stats={stats}
         isFollowing={isFollowing}
         canEdit={canEdit}
@@ -1305,7 +1574,7 @@ export function ProfilePage({ lang = "en" }) {
         onUpdatePost={onUpdatePost}
         refreshCurrentTab={refreshCurrentTab}
         onSaveProfile={onSaveProfile}
-        onCreateReview={() => {}}
+        onCreateReview={onCreateReview}
         editOpen={editOpen}
         setEditOpen={setEditOpen}
         addReviewOpen={addReviewOpen}

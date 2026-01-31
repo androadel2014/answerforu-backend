@@ -34,6 +34,13 @@ function absMedia(u) {
   return `${API_BASE}${s.startsWith("/") ? "" : "/"}${s}`;
 }
 
+function firstNameOf(v) {
+  const s = String(v || "").trim();
+  if (!s) return "Someone";
+  const parts = s.split(/\s+/).filter(Boolean);
+  return parts[0] || s;
+}
+
 function getMeIdFromToken() {
   try {
     const t = getToken();
@@ -116,12 +123,89 @@ function Bubble({ mine, text, at, dir }) {
   );
 }
 
+/* =========================
+   Toast (avatar + first name)
+   ✅ unread indicator OUTSIDE avatar (not on photo)
+========================= */
+function ChatToast({
+  dockSide = "right",
+  lang = "ar",
+  toast,
+  onOpen,
+  onClose,
+}) {
+  if (!toast?.thread?.id) return null;
+
+  const dir = lang === "ar" ? "rtl" : "ltr";
+  const other = toast.thread?.other || {};
+  const name = firstNameOf(other?.name || "User");
+  const avatar = absMedia(other?.avatar_url);
+  const text = String(toast.thread?.last_message || "").trim();
+
+  const panel = (
+    <div
+      className="fixed z-[99995] bottom-[150px] md:bottom-[82px] pointer-events-none"
+      style={dockSide === "right" ? { right: 18 } : { left: 18 }}
+      dir={dir}
+    >
+      <div className="pointer-events-auto w-[320px] max-w-[86vw] rounded-2xl bg-white border border-slate-200 shadow-[0_20px_60px_rgba(0,0,0,0.18)] overflow-hidden">
+        <button
+          className="w-full text-left p-3 flex items-center gap-3 hover:bg-slate-50"
+          onClick={() => onOpen?.(toast.thread)}
+          title="Open chat"
+        >
+          <div className="h-10 w-10 rounded-full bg-slate-900 text-white flex items-center justify-center overflow-hidden shrink-0">
+            {avatar ? (
+              <img src={avatar} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <span className="text-sm font-semibold">
+                {name.slice(0, 1).toUpperCase()}
+              </span>
+            )}
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <div className="font-semibold text-slate-900 truncate">
+                {name}
+              </div>
+              <div className="text-[11px] text-slate-400 shrink-0">
+                {toast.atLabel || ""}
+              </div>
+            </div>
+            <div className="text-sm text-slate-600 truncate">
+              {text || "New message"}
+            </div>
+          </div>
+
+          <div className="shrink-0 flex items-center">
+            <span className="h-2.5 w-2.5 rounded-full bg-rose-600" />
+          </div>
+        </button>
+
+        <div className="px-3 pb-3 -mt-1 flex justify-end">
+          <button
+            className="text-xs text-slate-500 hover:text-slate-700"
+            onClick={onClose}
+            type="button"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return createPortal(panel, document.body);
+}
+
 function ChatWindow({
   lang,
   thread,
   meId,
   onClose,
   onMinimize,
+  onRead,
   dockSide = "right",
   width = 320,
 }) {
@@ -133,7 +217,6 @@ function ChatWindow({
 
   const other = thread?.other || {};
   const dir = lang === "ar" ? "rtl" : "ltr";
-
   const otherAvatar = absMedia(other?.avatar_url);
 
   const load = async () => {
@@ -141,7 +224,9 @@ function ChatWindow({
       const data = await apiGet(`/api/chat/threads/${thread.id}/messages`);
       setMessages(Array.isArray(data?.items) ? data.items : []);
       setLoading(false);
-      apiPost(`/api/chat/threads/${thread.id}/read`, {}).catch(() => {});
+      apiPost(`/api/chat/threads/${thread.id}/read`, {})
+        .then(() => onRead?.(thread.id))
+        .catch(() => {});
     } catch {
       setLoading(false);
     }
@@ -387,6 +472,8 @@ function ChatInbox({ lang, open, onClose, onOpenThread, dockSide = "right" }) {
               {filtered.map((t) => {
                 const other = t?.other || {};
                 const otherAvatar = absMedia(other?.avatar_url);
+                const hasUnread = Number(t?.unread_count || 0) > 0;
+
                 return (
                   <button
                     key={t.id}
@@ -412,15 +499,16 @@ function ChatInbox({ lang, open, onClose, onOpenThread, dockSide = "right" }) {
                         <div className="font-semibold text-slate-900 truncate">
                           {other?.name || "User"}
                         </div>
-                        {!!t.unread_count && (
-                          <div className="min-w-[22px] h-[22px] px-2 rounded-full bg-rose-600 text-white text-xs flex items-center justify-center">
-                            {t.unread_count}
-                          </div>
+
+                        {hasUnread && (
+                          <span className="h-2.5 w-2.5 rounded-full bg-rose-600 shrink-0" />
                         )}
                       </div>
+
                       <div className="text-sm text-slate-600 truncate">
                         {t.last_message || " "}
                       </div>
+
                       {!!t.context_label && (
                         <div className="text-[11px] text-slate-400 truncate">
                           {t.context_label}
@@ -440,7 +528,7 @@ function ChatInbox({ lang, open, onClose, onOpenThread, dockSide = "right" }) {
   return createPortal(panel, document.body);
 }
 
-function MobileChatBody({ lang, thread, meId }) {
+function MobileChatBody({ lang, thread, meId, onRead }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState("");
@@ -454,7 +542,9 @@ function MobileChatBody({ lang, thread, meId }) {
       const data = await apiGet(`/api/chat/threads/${thread.id}/messages`);
       setMessages(Array.isArray(data?.items) ? data.items : []);
       setLoading(false);
-      apiPost(`/api/chat/threads/${thread.id}/read`, {}).catch(() => {});
+      apiPost(`/api/chat/threads/${thread.id}/read`, {})
+        .then(() => onRead?.(thread.id))
+        .catch(() => {});
     } catch {
       setLoading(false);
     }
@@ -567,6 +657,10 @@ export default function ChatDock({
   const [minimized, setMinimized] = useState([]);
   const [unreadTotal, setUnreadTotal] = useState(0);
 
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
+  const prevMapRef = useRef(new Map()); // threadId -> { unread, last }
+
   const isAuthed = !!token;
 
   useEffect(() => {
@@ -577,13 +671,105 @@ export default function ChatDock({
     setMeId(getMeIdFromToken());
   }, [isAuthed, token]);
 
-  const refreshUnread = async () => {
+  const hideToast = useCallback(() => {
+    setToast(null);
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+  }, []);
+
+  const showToast = useCallback(
+    (thread) => {
+      if (!thread?.id) return;
+
+      const isThreadVisible =
+        openThreads.some((x) => String(x.id) === String(thread.id)) &&
+        !minimized.some((id) => String(id) === String(thread.id));
+
+      if (inboxOpen) return;
+      if (isThreadVisible) return;
+
+      const atLabel = new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      setToast({ thread, atLabel });
+
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(() => {
+        setToast(null);
+        toastTimerRef.current = null;
+      }, 4500);
+    },
+    [inboxOpen, openThreads, minimized]
+  );
+
+  const mergeThreads = useCallback((freshItems) => {
+    const list = Array.isArray(freshItems) ? freshItems : [];
+    if (!list.length) return;
+
+    setOpenThreads((prev) => {
+      if (!prev.length) return prev;
+      return prev.map((t) => {
+        const found = list.find((x) => String(x.id) === String(t.id));
+        return found ? { ...t, ...found } : t;
+      });
+    });
+  }, []);
+
+  const markThreadRead = useCallback((id) => {
+    setOpenThreads((prev) =>
+      prev.map((t) =>
+        String(t.id) === String(id) ? { ...t, unread_count: 0 } : t
+      )
+    );
+  }, []);
+
+  const refreshUnread = useCallback(async () => {
     if (!isAuthed) return;
+
     try {
       const d = await apiGet(`/api/chat/summary`);
       setUnreadTotal(Number(d?.unread_total || 0));
     } catch {}
-  };
+
+    try {
+      const t = await apiGet(`/api/chat/threads`);
+      const items = Array.isArray(t?.items) ? t.items : [];
+      mergeThreads(items);
+
+      const prevMap = prevMapRef.current || new Map();
+      const nextMap = new Map();
+
+      let candidate = null;
+
+      for (const th of items) {
+        const id = String(th?.id || "");
+        const unread = Number(th?.unread_count || 0) || 0;
+        const last = String(th?.last_message || "");
+        nextMap.set(id, { unread, last });
+
+        const prev = prevMap.get(id);
+        const prevUnread = Number(prev?.unread || 0) || 0;
+        const prevLast = String(prev?.last || "");
+
+        const becameMoreUnread = unread > prevUnread;
+        const newMsgChanged = last && last !== prevLast;
+
+        if (becameMoreUnread || (unread > 0 && newMsgChanged)) {
+          if (!candidate) candidate = th;
+        }
+      }
+
+      prevMapRef.current = nextMap;
+
+      if (candidate && Number(candidate?.unread_count || 0) > 0) {
+        showToast(candidate);
+      }
+    } catch {}
+  }, [isAuthed, mergeThreads, showToast]);
 
   useInterval(() => refreshUnread(), isAuthed ? 10000 : null);
 
@@ -596,17 +782,22 @@ export default function ChatDock({
     (t) => {
       if (!t?.id) return;
 
+      hideToast();
       setInboxOpen(false);
 
       setOpenThreads((prev) => {
         const exists = prev.some((x) => String(x.id) === String(t.id));
-        if (exists) return prev;
+        if (exists) {
+          return prev.map((x) =>
+            String(x.id) === String(t.id) ? { ...x, ...t } : x
+          );
+        }
         return [t, ...prev].slice(0, maxOpen);
       });
 
       setMinimized((prev) => prev.filter((id) => String(id) !== String(t.id)));
     },
-    [maxOpen]
+    [maxOpen, hideToast]
   );
 
   useEffect(() => {
@@ -644,7 +835,6 @@ export default function ChatDock({
   const gap = 10;
   const winWidth = 320;
 
-  // ✅ ONLY the chat icon (no "راسلني" button هنا)
   const button = (
     <button
       className={cn(
@@ -652,7 +842,10 @@ export default function ChatDock({
         "bg-slate-900 text-white hover:opacity-95"
       )}
       style={dockSide === "right" ? { right: 18 } : { left: 18 }}
-      onClick={() => setInboxOpen(true)}
+      onClick={() => {
+        hideToast();
+        setInboxOpen(true);
+      }}
       title="Messages"
     >
       <MessageCircle className="h-5 w-5" />
@@ -675,12 +868,17 @@ export default function ChatDock({
         {minimized.slice(0, 6).map((id) => {
           const t = openThreads.find((x) => String(x.id) === String(id));
           const name = t?.other?.name || "Chat";
+          const hasUnread = Number(t?.unread_count || 0) > 0;
           const otherAvatar = absMedia(t?.other?.avatar_url);
+
           return (
             <button
               key={id}
-              onClick={() => restoreThread(id)}
-              className="h-12 max-w-[180px] px-3 rounded-2xl bg-white border border-slate-200 shadow-sm hover:bg-slate-50 flex items-center gap-2"
+              onClick={() => {
+                hideToast();
+                restoreThread(id);
+              }}
+              className="relative h-12 max-w-[180px] px-3 rounded-2xl bg-white border border-slate-200 shadow-sm hover:bg-slate-50 flex items-center gap-2"
               title={name}
             >
               <div className="h-8 w-8 rounded-full bg-slate-900 text-white flex items-center justify-center overflow-hidden text-xs font-semibold">
@@ -694,9 +892,14 @@ export default function ChatDock({
                   name.slice(0, 1).toUpperCase()
                 )}
               </div>
+
               <div className="text-sm font-semibold text-slate-900 truncate">
-                {name}
+                {firstNameOf(name)}
               </div>
+
+              {hasUnread && (
+                <span className="ml-auto h-2.5 w-2.5 rounded-full bg-rose-600" />
+              )}
             </button>
           );
         })}
@@ -722,6 +925,7 @@ export default function ChatDock({
           meId={meId}
           onClose={() => closeThread(t.id)}
           onMinimize={() => minimizeThread(t.id)}
+          onRead={markThreadRead}
           dockSide={dockSide}
           width={winWidth}
         />
@@ -745,9 +949,11 @@ export default function ChatDock({
             <ArrowLeft className="h-5 w-5" />
           )}
         </button>
+
         <div className="font-semibold truncate">
           {mobileActive?.other?.name || "Chat"}
         </div>
+
         <button
           className="h-10 w-10 rounded-2xl hover:bg-slate-100 flex items-center justify-center"
           onClick={() => minimizeThread(mobileActive.id)}
@@ -758,7 +964,12 @@ export default function ChatDock({
       </div>
 
       <div className="h-[calc(100vh-56px)]">
-        <MobileChatBody lang={lang} thread={mobileActive} meId={meId} />
+        <MobileChatBody
+          lang={lang}
+          thread={mobileActive}
+          meId={meId}
+          onRead={markThreadRead}
+        />
       </div>
     </div>
   ) : null;
@@ -774,10 +985,23 @@ export default function ChatDock({
         lang={lang}
         open={inboxOpen}
         onClose={() => setInboxOpen(false)}
-        onOpenThread={openThread}
+        onOpenThread={(t) => {
+          openThread(t);
+          apiPost(`/api/chat/threads/${t.id}/read`, {})
+            .then(() => markThreadRead(t.id))
+            .catch(() => {});
+        }}
         dockSide={dockSide}
       />
       {mobileDrawer}
+
+      <ChatToast
+        dockSide={dockSide}
+        lang={lang}
+        toast={toast}
+        onOpen={(t) => openThread(t)}
+        onClose={hideToast}
+      />
     </>
   );
 }

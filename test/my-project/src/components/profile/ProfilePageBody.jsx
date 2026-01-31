@@ -543,7 +543,6 @@ export default function ProfilePageBody({
               posts={countPosts}
               services={0}
               products={0}
-              myListingsCount={countListingsAll}
             />
           </div>
         </div>

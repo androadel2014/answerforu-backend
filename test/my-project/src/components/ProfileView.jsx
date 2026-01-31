@@ -206,10 +206,10 @@ export const ProfileView = ({ lang = "en" }) => {
     localStorage.getItem("jwt") ||
     "";
 
-  const authHeaders = () => {
+  const authHeaders = (isJson = true) => {
     const token = getToken();
     return {
-      "Content-Type": "application/json",
+      ...(isJson ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
   };
@@ -221,6 +221,61 @@ export const ProfileView = ({ lang = "en" }) => {
     localStorage.removeItem("user");
     window.dispatchEvent(new Event("auth_changed"));
     navigate("/auth", { replace: true });
+  };
+
+  // =========================
+  // ✅ Small fetch fallback helper
+  // =========================
+  const fetchFirstOk = async (urls, opts) => {
+    let lastErr = null;
+    for (const u of urls) {
+      try {
+        const res = await fetch(u, opts);
+        if (res.status === 401) return { __unauth: true };
+        const json = await res.json().catch(() => ({}));
+        if (res.ok) return { ok: true, json };
+        lastErr = json || { message: "Request failed" };
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    return { ok: false, error: lastErr };
+  };
+
+  const pickUserObj = (payload) => {
+    const p = payload || {};
+    const u =
+      p?.profile ||
+      p?.user_profile ||
+      p?.user ||
+      p?.data?.profile ||
+      p?.data?.user ||
+      p?.data ||
+      p ||
+      {};
+
+    const username =
+      u.username ||
+      u.display_name ||
+      u.displayName ||
+      u.full_name ||
+      u.fullName ||
+      "";
+
+    const phone =
+      u.phone ||
+      u.phone_number ||
+      u.phoneNumber ||
+      u.mobile ||
+      u.mobile_number ||
+      "";
+
+    const address =
+      u.location || u.address || u.address_line || u.addressLine || "";
+
+    const bio = u.bio || u.about || u.summary || "";
+
+    return { ...(u || {}), username, phone, address, bio };
   };
 
   // =========================
@@ -1160,7 +1215,7 @@ Stats: Exp=${expCount}, Edu=${eduCount}, Skills=${skillsCount}, Bullets=${bullet
   };
 
   // =========================
-  // ✅ Load user + list + HARD GUARD
+  // ✅ Load user + list + HARD GUARD (FIXED: fallback endpoints)
   // =========================
   useEffect(() => {
     const token = getToken();
@@ -1178,39 +1233,51 @@ Stats: Exp=${expCount}, Edu=${eduCount}, Skills=${skillsCount}, Bullets=${bullet
           const userData = JSON.parse(savedUser);
           setUser(userData);
           setEditData({
-            username: userData.username || "",
-            phone: userData.phone || "",
-            address: userData.address || "",
-            bio: userData.bio || "",
+            username: meObj.username || "",
+            phone: meObj.phone || "",
+            address: meObj.address || "",
+            bio: meObj.bio || "",
           });
         } catch {}
       }
 
       try {
-        const res = await fetch(`${API_BASE}/api/users/me`, {
-          headers: authHeaders(),
-        });
+        const res = await fetchFirstOk(
+          [
+            `${API_BASE}/api/profile/me`,
+            `${API_BASE}/api/me/profile`,
+            `${API_BASE}/api/user/profile/me`,
 
-        if (res.status === 401) return hardLogout();
+            `${API_BASE}/api/users/me`,
+            `${API_BASE}/api/user/me`,
+            `${API_BASE}/api/me`,
+          ],
+          { headers: authHeaders(false) }
+        );
 
-        const me = await res.json().catch(() => null);
+        if (res.__unauth) return hardLogout();
 
-        if (res.ok && me) {
-          setUser(me);
-          setEditData({
-            username: me.username || "",
-            phone: me.phone || "",
-            address: me.address || "",
-            bio: me.bio || "",
-          });
-          localStorage.setItem("user", JSON.stringify(me));
+        if (res.ok) {
+          const meObj = pickUserObj(res.json);
+          if (meObj && typeof meObj === "object") {
+            setUser(meObj);
+            setEditData({
+              username: meObj.username || "",
+              phone: meObj.phone || "",
+              address: meObj.address || "",
+              bio: meObj.bio || "",
+            });
+
+            localStorage.setItem("user", JSON.stringify(meObj));
+          }
+        } else {
+          console.warn("Me endpoints failed:", res.error);
         }
       } catch (e) {
-        console.error("Failed to load /api/users/me", e);
+        console.error("Failed to load ME", e);
       }
 
       await fetchUserCVs();
-
       setLoading(false);
     };
 
@@ -1219,35 +1286,54 @@ Stats: Exp=${expCount}, Edu=${eduCount}, Skills=${skillsCount}, Bullets=${bullet
   }, []);
 
   // =========================
-  // ✅ Save profile
+  // ✅ Save profile (FIXED: fallback endpoints)
   // =========================
   const handleSave = async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/users/me`, {
-        method: "PUT",
-        headers: authHeaders(),
-        body: JSON.stringify({
-          username: editData.username,
-          phone: editData.phone,
-          address: editData.address,
-          bio: editData.bio,
-        }),
-      });
+      const res = await fetchFirstOk(
+        [
+          `${API_BASE}/api/users/me`,
+          `${API_BASE}/api/user/me`,
+          `${API_BASE}/api/me`,
+          `${API_BASE}/api/profile/me`,
+          `${API_BASE}/api/me/profile`,
+          `${API_BASE}/api/user/profile/me`,
+        ],
+        {
+          method: "PUT",
+          headers: authHeaders(true),
+          body: JSON.stringify({
+            username: editData.username,
+            display_name: editData.username,
+            full_name: editData.username,
 
-      if (response.status === 401) return hardLogout();
+            phone: editData.phone,
+            phone_number: editData.phone,
 
-      const data = await response.json().catch(() => ({}));
+            location: editData.address,
+            address: editData.address,
 
-      if (!response.ok) {
-        toast.error(data?.message || t(lang, "saveFailed"));
+            bio: editData.bio,
+            about: editData.bio,
+            summary: editData.bio,
+          }),
+        }
+      );
+
+      if (res.__unauth) return hardLogout();
+
+      if (!res.ok) {
+        toast.error(
+          res?.error?.message || res?.error?.error || t(lang, "saveFailed")
+        );
         return;
       }
 
+      const updated = pickUserObj(res.json) || { ...(user || {}), ...editData };
       toast.success(t(lang, "updated"));
 
-      const updatedUser = { ...(user || {}), ...editData };
-      localStorage.setItem("user", JSON.stringify(updatedUser));
-      setUser(updatedUser);
+      localStorage.setItem("user", JSON.stringify(updated));
+      setUser(updated);
 
       setIsEditing(false);
     } catch (error) {
@@ -1876,3 +1962,5 @@ Stats: Exp=${expCount}, Edu=${eduCount}, Skills=${skillsCount}, Bullets=${bullet
     </div>
   );
 };
+
+export default ProfileView;
