@@ -551,7 +551,6 @@ export default function ProfilePageBody({
                     className="px-4 py-2 rounded-xl border bg-white hover:bg-gray-50 flex items-center gap-2"
                     title={lang === "ar" ? "إرسال رسالة" : "Send message"}
                   >
-                    {/* pkop */}
                     <SendHorizontal size={16} />
                     {lang === "ar" ? "شات" : lang === "es" ? "Chat" : "Chat"}
                   </button>
