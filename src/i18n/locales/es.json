@@ -1,0 +1,27 @@
+{
+  "common": {
+    "searchPlaceholder": "Buscar...",
+    "search": "Buscar",
+    "add": "Agregar",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "save": "Guardar",
+    "close": "Cerrar"
+  },
+  "nav": {
+    "explore": "Explorar",
+    "community": "Comunidad",
+    "profile": "Perfil"
+  },
+  "marketplace": {
+    "title": "Mercado",
+    "all": "Todo",
+    "products": "Compra y venta",
+    "housing": "Vivienda",
+    "services": "Servicios y trabajos",
+    "places": "Lugares y tiendas",
+    "programs": "Programas y referidos",
+    "business": "Ideas de negocio",
+    "rides": "Viajes"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "common": {
+    "searchPlaceholder": "ابحث عن أي شيء...",
+    "search": "بحث",
+    "add": "إضافة",
+    "cancel": "إلغاء",
+    "confirm": "تأكيد",
+    "save": "حفظ",
+    "close": "إغلاق"
+  },
+  "nav": {
+    "explore": "استكشف",
+    "community": "المجتمع",
+    "profile": "الملف الشخصي"
+  },
+  "marketplace": {
+    "title": "السوق",
+    "all": "الكل",
+    "products": "بيع وشراء",
+    "housing": "سكن",
+    "services": "خدمات وشغل",
+    "places": "أماكن ومحلات",
+    "programs": "برامج وريفيرال",
+    "business": "أفكار بزنس",
+    "rides": "مشاوير"
+  }
+}
