@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Logs
 logs
 *.log
@@ -26,3 +27,11 @@ node_modules/
 node_modules/
 .env
 *.sqlite
+=======
+node_modules
+database.sqlite
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.env
+>>>>>>> 1636da06d041557467a8ea363274922db5cd718e
