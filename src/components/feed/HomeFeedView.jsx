@@ -166,7 +166,7 @@ const toastConfirm = ({
           </div>
         </div>
       ),
-      { duration: 999999 }
+      { duration: 999999 },
     );
   });
 
@@ -195,7 +195,11 @@ const CommentNode = ({
   const replyKey = `${postId}:${node.id}`;
   const threadKey = `thread:${postId}:${node.id}`;
 
-  const userUrl = profileHref(node.user_id || node.userId);
+  const userUrl = profileHref(
+    node.user_public_id || node.userPublicId || node.public_id || node.publicId,
+    node.user_id || node.userId,
+  );
+
   const displayName = node.user_name || "User";
   const avatarSrc = absUrl(node.author_avatar || node.user_avatar || "");
 
@@ -265,7 +269,7 @@ const CommentNode = ({
               }}
               className={classNames(
                 "hover:text-gray-900",
-                likedByMe && "text-blue-600 font-semibold"
+                likedByMe && "text-blue-600 font-semibold",
               )}
               title="Like"
             >
@@ -335,7 +339,7 @@ const CommentNode = ({
                   "rounded-2xl px-4 text-sm font-semibold shadow-sm transition",
                   commentSending[replyKey]
                     ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                    : "bg-gray-900 text-white hover:bg-black"
+                    : "bg-gray-900 text-white hover:bg-black",
                 )}
               >
                 {commentSending[replyKey] ? "Sending..." : "Send"}
@@ -435,7 +439,29 @@ export const HomeFeedView = () => {
     } catch {}
   };
 
-  const profileHref = (userId) => (userId ? `/u/${userId}` : "/u/0");
+  const profileHref = (uOrId, maybeId) => {
+    // supports:
+    // - profileHref(userObj)
+    // - profileHref(publicId, id)
+    // - profileHref(id)
+    const u = typeof uOrId === "object" && uOrId ? uOrId : null;
+
+    const pid = String(
+      u?.public_id ??
+        u?.publicId ??
+        u?.author_public_id ??
+        u?.authorPublicId ??
+        uOrId ??
+        "",
+    ).trim();
+
+    const id = String(
+      u?.id ?? u?.user_id ?? u?.userId ?? u?.uid ?? maybeId ?? "",
+    ).trim();
+
+    const key = pid || id;
+    return key ? `/u/${encodeURIComponent(key)}` : "/u/0";
+  };
 
   const pickMediaUrl = (item) => {
     if (!item) return "";
@@ -451,7 +477,7 @@ export const HomeFeedView = () => {
             item.location ||
             item.file ||
             item.filename ||
-            ""
+            "",
         ).trim() || ""
       );
     }
@@ -604,7 +630,7 @@ export const HomeFeedView = () => {
           return next;
         });
         await Promise.allSettled(
-          firstWithComments.map((p) => fetchComments(p.id))
+          firstWithComments.map((p) => fetchComments(p.id)),
         );
       }
     } catch (e) {
@@ -634,8 +660,8 @@ export const HomeFeedView = () => {
                 ? Math.max(0, (p.likeCount || 0) - 1)
                 : (p.likeCount || 0) + 1,
             }
-          : p
-      )
+          : p,
+      ),
     );
 
     try {
@@ -748,7 +774,7 @@ export const HomeFeedView = () => {
           `${API_BASE}/api/posts/delete/${postId}`,
           `${API_BASE}/api/delete-post/${postId}`,
         ],
-        { method: "DELETE", headers: authHeaders() }
+        { method: "DELETE", headers: authHeaders() },
       );
 
       if (!res || !res.ok) {
@@ -759,7 +785,7 @@ export const HomeFeedView = () => {
           return toast.error("You can't delete this post");
         if (res?.status === 404)
           return toast.error(
-            "Delete route not found (404) — backend needs route"
+            "Delete route not found (404) — backend needs route",
           );
         return toast.error("Delete failed");
       }
@@ -789,7 +815,7 @@ export const HomeFeedView = () => {
           `${API_BASE}/api/comments/${commentId}`,
           `${API_BASE}/api/delete-comment/${commentId}`,
         ],
-        { method: "DELETE", headers: authHeaders() }
+        { method: "DELETE", headers: authHeaders() },
       );
 
       if (!res || !res.ok) {
@@ -799,7 +825,7 @@ export const HomeFeedView = () => {
           return toast.error("You can't delete this comment");
         if (res?.status === 404)
           return toast.error(
-            "Delete route not found (404) — backend needs route"
+            "Delete route not found (404) — backend needs route",
           );
         return toast.error("Delete failed");
       }
@@ -822,7 +848,7 @@ export const HomeFeedView = () => {
         if (c.id !== commentId) return c;
         const likedNow = !(c.likedByMe ?? c.liked_by_me);
         const current = Number(
-          c.likeCount ?? c.likesCount ?? c.like_count ?? c.likes_count ?? 0
+          c.likeCount ?? c.likesCount ?? c.like_count ?? c.likes_count ?? 0,
         );
         return {
           ...c,
@@ -839,7 +865,7 @@ export const HomeFeedView = () => {
           `${API_BASE}/api/posts/${postId}/comments/${commentId}/like`,
           `${API_BASE}/api/comments/${commentId}/like`,
         ],
-        { method: "POST", headers: authHeaders() }
+        { method: "POST", headers: authHeaders() },
       );
 
       if (!res || !res.ok) {
@@ -891,7 +917,7 @@ export const HomeFeedView = () => {
 
   const closeLightbox = useCallback(
     () => setLightbox({ open: false, urls: [], i: 0 }),
-    []
+    [],
   );
 
   const nextLightbox = useCallback(() => {
@@ -1028,7 +1054,7 @@ export const HomeFeedView = () => {
                     "px-4 py-2 rounded-full text-sm border transition shadow-sm",
                     active
                       ? "bg-gray-900 text-white border-gray-900"
-                      : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
+                      : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100",
                   )}
                 >
                   {t.label}
@@ -1065,13 +1091,19 @@ export const HomeFeedView = () => {
               typeof commentCounts[p.id] === "number"
                 ? commentCounts[p.id]
                 : typeof p.commentCount === "number"
-                ? p.commentCount
-                : 0;
+                  ? p.commentCount
+                  : 0;
 
             const isOwner =
               myUserId && (p.user_id === myUserId || p.userId === myUserId);
 
-            const postProfileUrl = profileHref(p.user_id || p.userId);
+            const postProfileUrl = profileHref(
+              p.author_public_id ||
+                p.authorPublicId ||
+                p.public_id ||
+                p.publicId,
+              p.user_id || p.userId,
+            );
 
             const flat = Array.isArray(comments[p.id]) ? comments[p.id] : [];
             const tree = buildCommentTree(flat);
@@ -1084,7 +1116,7 @@ export const HomeFeedView = () => {
                       p.likesCount ??
                       p.like_count ??
                       p.likes_count ??
-                      0
+                      0,
                   ) || 0;
 
             const media = Array.isArray(p.media) ? p.media : [];
@@ -1121,13 +1153,13 @@ export const HomeFeedView = () => {
                         <span
                           className={classNames(
                             "inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs border",
-                            cat.badge
+                            cat.badge,
                           )}
                         >
                           <span
                             className={classNames(
                               "w-2 h-2 rounded-full",
-                              cat.dot
+                              cat.dot,
                             )}
                           />
                           {cat.label}
@@ -1289,7 +1321,7 @@ export const HomeFeedView = () => {
                       "flex items-center justify-center gap-2 rounded-xl py-2 text-sm font-semibold border transition",
                       p.likedByMe
                         ? "bg-gray-900 text-white border-gray-900"
-                        : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
+                        : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100",
                     )}
                   >
                     👍 Like
@@ -1302,7 +1334,7 @@ export const HomeFeedView = () => {
                       "flex items-center justify-center gap-2 rounded-xl py-2 text-sm font-semibold border transition",
                       open
                         ? "bg-gray-100 text-gray-900 border-gray-200"
-                        : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
+                        : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100",
                     )}
                   >
                     💬 Comment{" "}
@@ -1381,7 +1413,7 @@ export const HomeFeedView = () => {
                           "rounded-2xl px-4 text-sm font-semibold shadow-sm transition",
                           commentSending[p.id]
                             ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                            : "bg-gray-900 text-white hover:bg-black"
+                            : "bg-gray-900 text-white hover:bg-black",
                         )}
                       >
                         {commentSending[p.id] ? "Sending..." : "Send"}

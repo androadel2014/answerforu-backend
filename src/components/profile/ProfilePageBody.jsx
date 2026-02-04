@@ -661,7 +661,7 @@ export default function ProfilePageBody({
               active={tab === "cvs"}
               onClick={() => setTab("cvs")}
               icon={<Briefcase size={16} />}
-              label={cvsLabel}
+              label={`${cvsLabel} (${cvCount || 0})`}
             />
           ) : null}
 

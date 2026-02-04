@@ -1,5 +1,7 @@
 // src/components/profile/PostCard.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
 import toast from "react-hot-toast";
 import {
   Pencil,
@@ -63,6 +65,7 @@ export default function PostCard({
   extractNumericId,
 }) {
   const rawPostId = getPostId(post);
+  const navigate = useNavigate();
 
   const numericPostId = useMemo(() => {
     const s = String(rawPostId ?? "").trim();
@@ -87,11 +90,27 @@ export default function PostCard({
     profile?.username ||
     "User";
 
+  const authorKey = useMemo(() => {
+    const pid =
+      post.author_public_id ||
+      post.authorPublicId ||
+      post.public_id ||
+      post.publicId ||
+      post.user_public_id ||
+      post.userPublicId ||
+      null;
+
+    const id =
+      post.author_id || post.user_id || post.userId || post.uid || null;
+
+    const key = String(pid || id || "").trim();
+    return key || "";
+  }, [post]);
+
   const absMediaUrl = (u) => {
     const s = String(u || "").trim();
     if (!s) return "";
-    if (s === "null" || s === "undefined") return "";
-    if (s.startsWith("http://") || s.startsWith("https://")) return s;
+    if (/^(data:|blob:|https?:\/\/)/i.test(s)) return s; // ✅ FIX
     return `${API_BASE}${s.startsWith("/") ? "" : "/"}${s}`;
   };
 
@@ -224,7 +243,7 @@ export default function PostCard({
   const canLikePost = !!postIdForComments;
 
   const [postLiked, setPostLiked] = useState(
-    !!(post.likedByMe ?? post.liked_by_me)
+    !!(post.likedByMe ?? post.liked_by_me),
   );
   const [postLikeCount, setPostLikeCount] = useState(
     Number(
@@ -232,8 +251,8 @@ export default function PostCard({
         post.likesCount ??
         post.like_count ??
         post.likes_count ??
-        0
-    ) || 0
+        0,
+    ) || 0,
   );
 
   useEffect(() => {
@@ -244,8 +263,8 @@ export default function PostCard({
           post.likesCount ??
           post.like_count ??
           post.likes_count ??
-          0
-      ) || 0
+          0,
+      ) || 0,
     );
   }, [post]);
 
@@ -265,7 +284,7 @@ export default function PostCard({
           `${API_BASE}/api/post/${encodeURIComponent(pid)}/like`,
           `${API_BASE}/api/posts/${encodeURIComponent(pid)}/like`,
         ],
-        { method: "POST", headers: { ...authHeaders() } }
+        { method: "POST", headers: { ...authHeaders() } },
       );
     } catch {
       setPostLiked(prevLiked);
@@ -276,7 +295,7 @@ export default function PostCard({
   async function onSharePost() {
     const pid = postIdForComments || rawPostId;
     const url = `${window.location.origin}/feed?postId=${encodeURIComponent(
-      String(pid)
+      String(pid),
     )}`;
 
     try {
@@ -310,7 +329,7 @@ export default function PostCard({
 
   const tree = useMemo(
     () => buildCommentTree(comments),
-    [comments, buildCommentTree]
+    [comments, buildCommentTree],
   );
 
   const makeCommentGetUrls = (pid) => [
@@ -454,7 +473,7 @@ export default function PostCard({
           is_liked: liked,
           likes_count: liked ? likes + 1 : Math.max(0, likes - 1),
         };
-      })
+      }),
     );
 
     try {
@@ -467,7 +486,7 @@ export default function PostCard({
         {
           method: currentlyLiked ? "DELETE" : "POST",
           headers: { "Content-Type": "application/json", ...authHeaders() },
-        }
+        },
       );
     } catch {
       await loadComments();
@@ -516,8 +535,22 @@ export default function PostCard({
         <div className="flex-1">
           <div className="flex items-center justify-between gap-2">
             <div>
-              <div className="font-semibold leading-tight">{authorName}</div>
-              <div className="text-xs text-gray-500">{created}</div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!authorKey) return;
+                  navigate(`/u/${encodeURIComponent(authorKey)}`);
+                }}
+                className="text-left group"
+                title={authorName}
+              >
+                <div className="font-semibold leading-tight group-hover:underline">
+                  {authorName}
+                </div>
+                <div className="text-xs text-gray-500">{created}</div>
+              </button>
             </div>
 
             {isMe ? (
@@ -568,7 +601,7 @@ export default function PostCard({
                 "flex items-center justify-center gap-2 rounded-xl py-2 text-sm font-semibold border transition",
                 postLiked
                   ? "bg-black text-white border-black"
-                  : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                  : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50",
               )}
               disabled={!canLikePost}
               title={!canLikePost ? "Not available for profile posts" : ""}

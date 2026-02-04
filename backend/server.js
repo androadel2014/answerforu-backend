@@ -72,11 +72,11 @@ app.use((req, res, next) => {
 
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, Accept"
+      "Content-Type, Authorization, Accept",
     );
     res.setHeader(
       "Access-Control-Allow-Methods",
-      "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+      "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     );
   }
 
@@ -118,7 +118,7 @@ for (const dir of EXISTING_UPLOAD_DIRS) {
         res.setHeader("Access-Control-Allow-Origin", "*");
         res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
       },
-    })
+    }),
   );
 }
 
@@ -230,15 +230,6 @@ const {
   adminRequired,
 } = core;
 
-// ✅ alias endpoints for frontend compatibility
-app.get("/api/me", authRequired, (req, res) => {
-  res.json({ user: req.user });
-});
-
-app.get("/api/users/me", authRequired, (req, res) => {
-  res.json({ user: req.user });
-});
-
 // ✅ object expected by src/marketplace.js
 const auth = { authRequired, authOptional, isAdminReq, adminRequired };
 
@@ -278,7 +269,7 @@ function ensureProfileRow(userId, cb) {
               return dbRun(
                 `INSERT OR IGNORE INTO user_profile (user_id, username, display_name) VALUES (?,?,?)`,
                 [userId, last, displayName],
-                () => cb(null)
+                () => cb(null),
               );
             }
 
@@ -293,14 +284,14 @@ function ensureProfileRow(userId, cb) {
                     if (e3) return cb(e3);
                     if (okRow) return cb(null);
                     tryInsert(i + 1);
-                  }
+                  },
                 );
-              }
+              },
             );
           })(0);
-        }
+        },
       );
-    }
+    },
   );
 }
 
@@ -357,7 +348,7 @@ db.serialize(() => {
 
   // indexes
   db.run(
-    `CREATE INDEX IF NOT EXISTS idx_user_profile_user_id ON user_profile(user_id)`
+    `CREATE INDEX IF NOT EXISTS idx_user_profile_user_id ON user_profile(user_id)`,
   );
 });
 

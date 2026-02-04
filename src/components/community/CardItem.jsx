@@ -1,5 +1,6 @@
 // src/components/community/CardItem.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import {
   User,
@@ -21,6 +22,7 @@ import {
   Wrench,
   MoreVertical,
 } from "lucide-react";
+
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL ||
   import.meta.env.VITE_API_BASE ||
@@ -445,14 +447,14 @@ function CardBanner({
     <div
       className={classNames(
         "w-full rounded-2xl border bg-gradient-to-r px-4 py-3 flex items-center justify-between",
-        ui.bg
+        ui.bg,
       )}
     >
       <div className="flex items-center gap-3 min-w-0">
         <div
           className={classNames(
             "w-9 h-9 rounded-xl flex items-center justify-center shrink-0",
-            ui.icon
+            ui.icon,
           )}
         >
           <Icon className="w-5 h-5 text-white" />
@@ -478,6 +480,7 @@ function CardBanner({
    ✅ CardItem
 ========================= */
 const OWNER_NAME_CACHE = new Map(); // ownerId -> name
+const OWNER_KEY_CACHE = new Map(); // ownerId -> (public_id or fallback numeric string)
 
 export function CardItem({
   tab,
@@ -489,6 +492,7 @@ export function CardItem({
   lang = "en",
 }) {
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
 
   const t = UI[lang] || UI.en;
   const dir = getDir(lang);
@@ -553,7 +557,7 @@ export function CardItem({
   }, []);
 
   const meId = Number(
-    me?.id ?? me?.userId ?? me?.user_id ?? me?.uid ?? me?.sub ?? 0
+    me?.id ?? me?.userId ?? me?.user_id ?? me?.uid ?? me?.sub ?? 0,
   );
 
   const ownerId = Number(
@@ -566,7 +570,7 @@ export function CardItem({
       it?.ownerId ??
       it?.createdById ??
       it?.createdByUserId ??
-      0
+      0,
   );
 
   const initialOwnerName =
@@ -587,12 +591,26 @@ export function CardItem({
     return String(cached || initialOwnerName || "").trim();
   });
 
+  const [ownerKey, setOwnerKey] = useState(() => {
+    const cached = OWNER_KEY_CACHE.get(ownerId);
+    return String(cached || (ownerId ? String(ownerId) : "") || "").trim();
+  });
+
   useEffect(() => {
     if (!ownerId) return;
 
-    const cached = OWNER_NAME_CACHE.get(ownerId);
-    if (cached) {
-      const v = String(cached || "").trim();
+    const cachedKey = OWNER_KEY_CACHE.get(ownerId);
+    if (cachedKey) {
+      const v = String(cachedKey || "").trim();
+      if (v && v !== ownerKey) setOwnerKey(v);
+    } else {
+      const fallback = ownerId ? String(ownerId) : "";
+      if (fallback && fallback !== ownerKey) setOwnerKey(fallback);
+    }
+
+    const cachedName = OWNER_NAME_CACHE.get(ownerId);
+    if (cachedName) {
+      const v = String(cachedName || "").trim();
       if (v && v !== ownerName) setOwnerName(v);
       return;
     }
@@ -601,18 +619,45 @@ export function CardItem({
     if (seed) {
       OWNER_NAME_CACHE.set(ownerId, seed);
       if (seed !== ownerName) setOwnerName(seed);
-      return;
     }
 
     let cancelled = false;
 
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/profile/${ownerId}`);
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) return;
+        let res = null;
+        let data = null;
+
+        try {
+          res = await fetch(`${API_BASE}/api/profile/${ownerId}`, {
+            headers: { "Content-Type": "application/json" },
+          });
+          data = await res.json().catch(() => ({}));
+        } catch {}
+
+        if (!res || !res.ok) {
+          try {
+            res = await fetch(`${API_BASE}/api/users/${ownerId}`, {
+              headers: { "Content-Type": "application/json" },
+            });
+            data = await res.json().catch(() => ({}));
+          } catch {
+            return;
+          }
+        }
+
+        if (!res || !res.ok) return;
 
         const src = data?.profile || data?.user_profile || data?.user || data;
+
+        const publicId =
+          src?.public_id ?? src?.publicId ?? data?.public_id ?? data?.publicId;
+
+        const finalKey = String(publicId || "").trim() || String(ownerId);
+
+        OWNER_KEY_CACHE.set(ownerId, finalKey);
+        if (!cancelled) setOwnerKey(finalKey);
+
         const name =
           src?.display_name ||
           src?.displayName ||
@@ -623,10 +668,10 @@ export function CardItem({
           "";
 
         const finalName = String(name || "").trim();
-        if (!finalName) return;
-
-        OWNER_NAME_CACHE.set(ownerId, finalName);
-        if (!cancelled) setOwnerName(finalName);
+        if (finalName) {
+          OWNER_NAME_CACHE.set(ownerId, finalName);
+          if (!cancelled) setOwnerName(finalName);
+        }
       } catch {}
     })();
 
@@ -642,8 +687,8 @@ export function CardItem({
     typeKey !== "places" && typeKey !== "groups" && (it.price || it.budget)
       ? String(it.price || it.budget)
       : typeKey === "groups"
-      ? it.platform || ""
-      : it.category || "";
+        ? it.platform || ""
+        : it.category || "";
 
   return (
     <div
@@ -659,7 +704,7 @@ export function CardItem({
       }}
       className={classNames(
         "rounded-2xl relative border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition hover:ring-2 hover:ring-black/5",
-        cardClickable ? "cursor-pointer" : ""
+        cardClickable ? "cursor-pointer" : "",
       )}
     >
       <CardBanner
@@ -696,14 +741,15 @@ export function CardItem({
                 </span>
               ) : null}
             </span>
-
             {ownerId ? (
               <button
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  window.location.href = `/u/${ownerId}`;
+                  const key = String(ownerKey || ownerId || "").trim();
+                  if (!key) return;
+                  navigate(`/u/${encodeURIComponent(key)}`);
                 }}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
                 title={ownerName || "—"}
@@ -864,7 +910,7 @@ export function CardItem({
               <div
                 className={classNames(
                   "absolute mt-2 w-44 rounded-2xl border border-gray-200 bg-white shadow-xl overflow-hidden z-50",
-                  dir === "rtl" ? "left-0" : "right-0"
+                  dir === "rtl" ? "left-0" : "right-0",
                 )}
               >
                 <button

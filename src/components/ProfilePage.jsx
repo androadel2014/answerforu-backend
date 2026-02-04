@@ -5,7 +5,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import PostComposer from "../components/feed/PostComposer";
-import { MessageCircle } from "lucide-react";
 
 import ProfilePageBody from "./profile/ProfilePageBody";
 
@@ -35,9 +34,6 @@ const MARKET_TYPES = ["services", "products", "jobs", "housing"];
 
 /* =========================
    ✅ Profile normalize + single source of truth
-   - Display reads from normalized "profile"
-   - Edit form is derived from the SAME normalized "profile"
-   - Save updates the SAME normalized "profile"
 ========================= */
 function normalizeProfile(p) {
   const x = p || {};
@@ -130,45 +126,37 @@ function toEditFormFromProfile(p) {
 function buildProfileSavePayload(editForm) {
   const f = editForm || {};
   return {
-    // ✅ username
     username: f.username,
     user_name: f.username,
     handle: f.username,
 
-    // ✅ display name
     display_name: f.display_name,
     displayName: f.display_name,
     full_name: f.display_name,
     fullName: f.display_name,
 
-    // ✅ phone
     phone: f.phone,
     phone_number: f.phone,
     phoneNumber: f.phone,
     mobile: f.phone,
 
-    // ✅ whatsapp
     whatsapp: f.whatsapp,
     whatsApp: f.whatsapp,
     wa: f.whatsapp,
 
-    // ✅ location/address
     location: f.location,
     address: f.location,
     address_line: f.location,
     addressLine: f.location,
 
-    // ✅ bio
     bio: f.bio,
     about: f.bio,
     summary: f.bio,
 
-    // ✅ website
     website: f.website,
     site: f.website,
     url: f.website,
 
-    // ✅ avatar/cover
     avatar_url: f.avatar_url,
     avatarUrl: f.avatar_url,
     avatar: f.avatar_url,
@@ -200,6 +188,11 @@ function mergeProfileWithEditForm(prevProfile, editForm) {
 /* =========================
    Helpers
 ========================= */
+function isNumericLike(v) {
+  const s = String(v ?? "").trim();
+  return !!s && /^[0-9]+$/.test(s);
+}
+
 function buildPrefixedId(type, id) {
   const t = String(type || "").toLowerCase();
   const n = id == null ? null : Number(id);
@@ -299,7 +292,6 @@ function getRawId(x) {
   );
 }
 
-// ✅ normalize review row for UI (name + stars + clickable hrefs)
 function toStars(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return 0;
@@ -375,14 +367,19 @@ function normalizeReviewForUI(r) {
   const itemPrefixed =
     itemType && itemIdNum ? buildPrefixedId(itemType, itemIdNum) : null;
 
-  // ✅ FIX: your frontend route is /marketplace/item/:prefixedId (place_28)
   const itemHref = itemPrefixed
     ? `/marketplace/item/${itemPrefixed}`
     : itemIdNum
       ? `/marketplace/item/${itemIdNum}`
       : null;
 
-  const reviewerHref = reviewerId ? `/u/${reviewerId}` : null;
+  const reviewerPid = pickFirstStr(
+    r?.reviewer_public_id,
+    r?.reviewerPublicId,
+    r?.public_id,
+    r?.publicId,
+  );
+  const reviewerHref = reviewerId ? `/u/${reviewerPid || reviewerId}` : null;
 
   return {
     ...(r || {}),
@@ -428,7 +425,6 @@ async function fetchUserListingsAll(API_BASE, uid) {
 
   const out = [];
 
-  // ✅ 1) legacy places
   try {
     const r = await tryFetchFallback(
       [
@@ -441,7 +437,6 @@ async function fetchUserListingsAll(API_BASE, uid) {
     pushDedup(out, "places", extractArray(r));
   } catch {}
 
-  // ✅ 2) legacy groups
   try {
     const r = await tryFetchFallback(
       [
@@ -454,15 +449,12 @@ async function fetchUserListingsAll(API_BASE, uid) {
     pushDedup(out, "groups", extractArray(r));
   } catch {}
 
-  // ✅ 3) marketplace unified types
   for (const type of MARKET_TYPES) {
     try {
       const r = await tryFetchFallback(
         [
           `${API_BASE}/api/listings?type=${encodeURIComponent(type)}`,
-          `${API_BASE}/api/marketplace/listings?type=${encodeURIComponent(
-            type,
-          )}`,
+          `${API_BASE}/api/marketplace/listings?type=${encodeURIComponent(type)}`,
           `${API_BASE}/api/listings/${encodeURIComponent(type)}`,
           `${API_BASE}/api/marketplace/${encodeURIComponent(type)}`,
         ],
@@ -472,7 +464,6 @@ async function fetchUserListingsAll(API_BASE, uid) {
     } catch {}
   }
 
-  // ✅ sort newest first (best effort)
   out.sort((a, b) =>
     String(
       b.updatedAt || b.updated_at || b.createdAt || b.created_at || "",
@@ -524,7 +515,6 @@ async function fetchReceivedReviewsViaListings(API_BASE, uid, listingsAll) {
         `${API_BASE}/api/groups/${idNum}/ratings`,
       ]);
     } else {
-      // unified listings/services/products/jobs/housing
       const pref = buildPrefixedId(type, idNum);
       if (!pref) continue;
 
@@ -552,18 +542,81 @@ async function fetchReceivedReviewsViaListings(API_BASE, uid, listingsAll) {
 }
 
 /* =========================
+   ✅ resolve identifier -> { id, public_id }
+   - supports: numeric id, public_id, username
+========================= */
+async function resolveUserIdentifier(API_BASE, ident) {
+  const s = String(ident ?? "").trim();
+  if (!s) return null;
+
+  // numeric id (legacy)
+  if (/^[0-9]+$/.test(s)) return { id: s, public_id: null };
+
+  const headers = { "Content-Type": "application/json", ...authHeaders() };
+
+  // 1) try: treat as public_id directly
+  try {
+    const r1 = await tryFetchFallback(
+      [
+        `${API_BASE}/api/profile/${encodeURIComponent(s)}`,
+        `${API_BASE}/api/users/${encodeURIComponent(s)}`,
+        `${API_BASE}/api/profiles/${encodeURIComponent(s)}`,
+      ],
+      { headers },
+    );
+
+    const o1 = r1?.profile || r1?.user || r1?.data || r1 || {};
+    const id1 =
+      o1?.id ?? o1?.user_id ?? o1?.userId ?? o1?.uid ?? o1?.profile_id ?? null;
+
+    const n1 = Number(id1);
+    if (Number.isFinite(n1) && n1 > 0) {
+      const pid1 =
+        o1?.public_id ?? o1?.publicId ?? o1?.publicID ?? o1?.publicid ?? null;
+      return { id: String(n1), public_id: pid1 ? String(pid1) : null };
+    }
+  } catch {}
+
+  // 2) fallback: username endpoints (legacy)
+  try {
+    const r2 = await tryFetchFallback(
+      [
+        `${API_BASE}/api/users/by-username/${encodeURIComponent(s)}`,
+        `${API_BASE}/api/users/username/${encodeURIComponent(s)}`,
+        `${API_BASE}/api/profile/by-username/${encodeURIComponent(s)}`,
+        `${API_BASE}/api/u/${encodeURIComponent(s)}`,
+      ],
+      { headers },
+    );
+
+    const o2 = r2?.user || r2?.profile || r2?.item || r2?.data || r2 || {};
+    const id2 =
+      o2?.id ?? o2?.user_id ?? o2?.userId ?? o2?.uid ?? o2?.profile_id ?? null;
+
+    const n2 = Number(id2);
+    if (Number.isFinite(n2) && n2 > 0) {
+      const pid2 =
+        o2?.public_id ?? o2?.publicId ?? o2?.publicID ?? o2?.publicid ?? null;
+      return { id: String(n2), public_id: pid2 ? String(pid2) : null };
+    }
+  } catch {}
+
+  return null;
+}
+
+/* =========================
    Main Page
 ========================= */
 export function ProfilePage({ lang = "en", forcedUserId = null }) {
   const API_BASE = useMemo(() => getAPIBase(), []);
   const { userId } = useParams();
-  const userIdParam = String(forcedUserId ?? userId ?? "").trim();
-
   const navigate = useNavigate();
   const location = useLocation();
-  // ✅ allows /u/me without changing App.jsx routes
 
-  const effectiveUserId =
+  const userIdParam = String(forcedUserId ?? userId ?? "").trim();
+
+  // ✅ supports /u/me + /u/123 + /u/username
+  const rawIdent =
     userIdParam.toLowerCase() === "me"
       ? String(getAuthUserId() || "").trim()
       : userIdParam;
@@ -579,12 +632,11 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
   const [isMe, setIsMe] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
 
-  const [tab, setTab] = useState("posts"); // posts | listingsAll | reviews
+  const [tab, setTab] = useState("posts"); // posts | listingsAll | reviews | cvs
 
   const [posts, setPosts] = useState([]);
   const [reviews, setReviews] = useState([]);
 
-  // ✅ unified listings (profile owner listings)
   const [listingsAll, setListingsAll] = useState([]);
   const [listingsLoading, setListingsLoading] = useState(false);
 
@@ -611,6 +663,57 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
   const canAct = isAuthed();
   const authedId = getAuthUserId();
 
+  // ✅ resolved numeric id that backend expects
+  const [resolvedUser, setResolvedUser] = useState(() =>
+    isNumericLike(rawIdent) ? { id: rawIdent, public_id: null } : null,
+  );
+
+  const [resolving, setResolving] = useState(false);
+
+  // ✅ resolve when ident is not numeric (public_id / username)
+  useEffect(() => {
+    let dead = false;
+
+    (async () => {
+      const ident = String(rawIdent || "").trim();
+      if (!ident) {
+        if (!dead) setResolvedUser(null);
+        return;
+      }
+
+      if (isNumericLike(ident)) {
+        if (!dead) setResolvedUser({ id: ident, public_id: null });
+        return;
+      }
+
+      setResolving(true);
+      try {
+        const obj = await resolveUserIdentifier(API_BASE, ident);
+        if (!dead) setResolvedUser(obj);
+      } catch {
+        if (!dead) setResolvedUser(null);
+      } finally {
+        if (!dead) setResolving(false);
+      }
+    })();
+
+    return () => {
+      dead = true;
+    };
+  }, [API_BASE, rawIdent]);
+
+  const effectiveUserId = String(resolvedUser?.id || "").trim();
+  const effectivePublicId = String(resolvedUser?.public_id || "").trim();
+
+  const canonicalProfileIdent = useMemo(() => {
+    // prefer public_id if we know it, else fallback to original rawIdent, else numeric id
+    return (
+      effectivePublicId ||
+      (rawIdent && !isNumericLike(rawIdent) ? rawIdent : "") ||
+      effectiveUserId
+    );
+  }, [effectivePublicId, rawIdent, effectiveUserId]);
+
   const computedIsMe =
     !!authedId &&
     !!effectiveUserId &&
@@ -621,9 +724,7 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
   const countPosts = Number(stats?.posts ?? posts.length ?? 0) || 0;
   const countReviews = Number(reviews?.length ?? 0) || 0;
 
-  // ✅ listings belong to the PROFILE owner (the userId in URL)
   const listingsOwnerId = String(effectiveUserId || "").trim();
-
   const countListingsAll = listingsAll.length || 0;
 
   useEffect(() => {
@@ -632,8 +733,15 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
     async function load() {
       setLoading(true);
       try {
+        // if we are resolving username, just wait
+        if (!rawIdent) throw new Error(tt(lang, "loginFirst") || "Login first");
+        if (!effectiveUserId) {
+          if (isNumericLike(rawIdent)) throw new Error("Bad user id");
+          // username not resolved yet
+          return;
+        }
+
         const uid = String(effectiveUserId || "").trim();
-        if (!uid) throw new Error(tt(lang, "loginFirst") || "Login first");
 
         const data = await tryFetchFallback(
           [
@@ -651,13 +759,41 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
         const rawP =
           data?.profile || data?.user_profile || data?.user || data || null;
         const p = normalizeProfile(rawP);
+        // ✅ if backend returned public_id, upgrade URL to /u/<public_id> (no break)
+        const pid =
+          String(
+            rawP?.public_id ??
+              rawP?.publicId ??
+              data?.public_id ??
+              data?.user?.public_id ??
+              "",
+          ).trim() || "";
+
+        if (pid) {
+          setResolvedUser((prev) => ({
+            id: uid,
+            public_id: pid,
+          }));
+
+          // If current URL is numeric id or "me", upgrade to canonical public_id
+          const currentParam = String(userIdParam || "")
+            .trim()
+            .toLowerCase();
+          const shouldUpgrade =
+            currentParam === "me" ||
+            isNumericLike(currentParam) ||
+            currentParam !== pid;
+
+          if (shouldUpgrade) {
+            navigate(`/u/${pid}`, { replace: true });
+          }
+        }
 
         const st = data?.stats || data?.profile_stats || null;
 
         setProfile(p);
         setStats(st);
 
-        // ✅ marketplace ratings stats (for user's listings)
         try {
           const rr = await tryFetchFallback(
             [
@@ -679,13 +815,15 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
           typeof data?.isFollowing === "boolean" ? data.isFollowing : false,
         );
 
-        // ✅ EDIT FORM comes from SAME normalized profile
         setEditForm(toEditFormFromProfile(p));
       } catch (e) {
-        toast.error(e.message || tt(lang, "failedLoadProfile"));
-        setProfile(null);
-        setStats(null);
-        setRatingsStats(null);
+        // if username resolve failed, show not found
+        if (!dead) {
+          toast.error(e.message || tt(lang, "failedLoadProfile"));
+          setProfile(null);
+          setStats(null);
+          setRatingsStats(null);
+        }
       } finally {
         if (!dead) setLoading(false);
       }
@@ -695,7 +833,7 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
     return () => {
       dead = true;
     };
-  }, [API_BASE, effectiveUserId, lang]);
+  }, [API_BASE, rawIdent, effectiveUserId, lang]);
 
   const refreshListingsAll = useCallback(async () => {
     if (!listingsOwnerId) {
@@ -714,13 +852,11 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
     }
   }, [API_BASE, listingsOwnerId]);
 
-  // ✅ preload listings (counter + tab)
   useEffect(() => {
+    if (!listingsOwnerId) return;
     refreshListingsAll();
-  }, [refreshListingsAll]);
+  }, [refreshListingsAll, listingsOwnerId]);
 
-  // ✅ preload reviews for counters (so counts show immediately)
-  // ✅ CVs count for owner (shows in tab like listings/reviews)
   useEffect(() => {
     if (!canEdit) {
       setCvCount(0);
@@ -793,12 +929,10 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
     };
   }, [API_BASE, effectiveUserId]);
 
-  // ✅ refresh when user opens listings tab (always latest)
   useEffect(() => {
     if (tab === "listingsAll") refreshListingsAll();
   }, [tab, refreshListingsAll]);
 
-  // ✅ refresh when coming back from /community (add/edit)
   useEffect(() => {
     const isFromCommunity =
       String(location?.state?.from || "") === "community" ||
@@ -851,9 +985,6 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
         }
 
         if (tab === "reviews") {
-          const uid = String(effectiveUserId || "").trim();
-
-          // 1) optional stats
           let rStats = null;
           try {
             rStats = await tryFetchFallback(
@@ -867,15 +998,12 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
             rStats = null;
           }
 
-          // 2) fetch owned listings then fetch reviews per listing
           const allListings = await fetchUserListingsAll(API_BASE, uid);
-
           const receivedRaw = await fetchReceivedReviewsViaListings(
             API_BASE,
             uid,
             allListings,
           );
-
           const receivedUI = receivedRaw.map(normalizeReviewForUI);
 
           if (!dead) {
@@ -937,7 +1065,6 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
         r?.user_profile?.cover_url ||
         "";
 
-      // ✅ update SAME normalized profile
       setProfile((prev) =>
         normalizeProfile({ ...(prev || {}), cover_url: nextUrl }),
       );
@@ -1051,6 +1178,8 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
 
   async function onFollowToggle() {
     if (!canAct) return toast.error(tt(lang, "loginToFollow"));
+    if (!effectiveUserId) return;
+
     try {
       if (isFollowing) {
         await tryFetchFallback(
@@ -1089,7 +1218,6 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
   async function onSaveProfile() {
     if (!canEdit) return;
 
-    // ✅ optimistic: update displayed profile from SAME editForm immediately
     setProfile((prev) => mergeProfileWithEditForm(prev, editForm));
 
     try {
@@ -1100,7 +1228,6 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
           `${API_BASE}/api/profile/me`,
           `${API_BASE}/api/me/profile`,
           `${API_BASE}/api/user/profile/me`,
-          // extra fallbacks
           `${API_BASE}/api/users/me`,
           `${API_BASE}/api/user/me`,
         ],
@@ -1120,7 +1247,7 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
       setEditForm(toEditFormFromProfile(next));
 
       setEditOpen(false);
-      // ✅ ensure we reflect DB truth after save (same source as display)
+
       try {
         const uid = String(effectiveUserId || "").trim();
         if (uid) {
@@ -1183,13 +1310,11 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
         ).catch(() => null);
 
         const allListings = await fetchUserListingsAll(API_BASE, uid);
-
         const receivedRaw = await fetchReceivedReviewsViaListings(
           API_BASE,
           uid,
           allListings,
         );
-
         const receivedUI = receivedRaw.map(normalizeReviewForUI);
 
         const count = receivedUI.length;
@@ -1214,9 +1339,6 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
     } catch {}
   }
 
-  /* =========================
-     ✅ CREATE REVIEW (THIS FIXES "اكتب تقييم")
-  ========================= */
   async function onCreateReview() {
     if (!canAct) return toast.error(tt(lang, "loginFirst") || "Login first");
 
@@ -1436,9 +1558,7 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
     if (!computedIsMe) return toast.error(tt(lang, "notAllowed"));
 
     navigate(
-      `/community?add=1&from=profile&uid=${encodeURIComponent(
-        String(listingsOwnerId || ""),
-      )}`,
+      `/community?add=1&from=profile&uid=${encodeURIComponent(String(listingsOwnerId || ""))}`,
     );
   };
 
@@ -1451,9 +1571,9 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
     if (!pref) return navigate("/community");
 
     navigate(
-      `/community?edit=1&id=${encodeURIComponent(
-        pref,
-      )}&from=profile&uid=${encodeURIComponent(String(listingsOwnerId || ""))}`,
+      `/community?edit=1&id=${encodeURIComponent(pref)}&from=profile&uid=${encodeURIComponent(
+        String(listingsOwnerId || ""),
+      )}`,
     );
   };
 
@@ -1502,7 +1622,10 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
             `${API_BASE}/api/listings/${pref}`,
             `${API_BASE}/api/listings/${encodeURIComponent(pref)}`,
           ],
-          { method: "DELETE", headers: { ...authHeaders() } },
+          {
+            method: "DELETE",
+            headers: { ...authHeaders() },
+          },
         );
       }
 
@@ -1538,41 +1661,10 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
   const username = safeProfile.username ? `@${safeProfile.username}` : "";
   const verified = !!safeProfile.is_verified;
 
-  // ✅ always pass normalized reviews to body
   const reviewsUI = useMemo(
     () => (Array.isArray(reviews) ? reviews : []).map(normalizeReviewForUI),
     [reviews],
   );
-
-  async function onMessageUser() {
-    if (!canAct) return toast.error(tt(lang, "loginFirst") || "Login first");
-
-    const otherId = Number(String(effectiveUserId || "").trim());
-
-    if (!Number.isFinite(otherId) || otherId <= 0) return;
-    if (computedIsMe) return;
-
-    try {
-      const r = await tryFetchFallback([`${API_BASE}/api/chat/threads`], {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({
-          other_user_id: otherId,
-          context_type: "profile",
-          context_id: String(otherId),
-          context_label: displayName,
-        }),
-      });
-
-      const thread = r?.thread || r?.data?.thread || r?.item || r;
-
-      window.dispatchEvent(
-        new CustomEvent("a4u:chat-open", { detail: { thread } }),
-      );
-    } catch (e) {
-      toast.error(e.message || "Chat failed");
-    }
-  }
 
   return (
     <>
@@ -1581,7 +1673,7 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
         dir={dir}
         API_BASE={API_BASE}
         navigate={navigate}
-        loading={loading}
+        loading={loading || resolving}
         profile={safeProfile}
         stats={stats}
         isFollowing={isFollowing}
@@ -1604,7 +1696,9 @@ export function ProfilePage({ lang = "en", forcedUserId = null }) {
         verified={verified}
         cvCount={cvCount}
         onShare={() => {
-          const url = window.location.href;
+          const url = `${window.location.origin}/u/${encodeURIComponent(
+            canonicalProfileIdent || userIdParam || "",
+          )}`;
           const text = `Profile on AnswerForU: ${displayName}`;
           (async () => {
             try {

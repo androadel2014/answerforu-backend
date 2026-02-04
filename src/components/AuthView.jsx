@@ -99,8 +99,8 @@ export const AuthView = ({ lang = "en" }) => {
           loggedIn: "Sesión iniciada ✅",
           serverConnFail: "No se pudo conectar al servidor",
         },
-      }[LKEY] || {}),
-    [LKEY]
+      })[LKEY] || {},
+    [LKEY],
   );
 
   const [isLogin, setIsLogin] = useState(true);
@@ -155,14 +155,34 @@ export const AuthView = ({ lang = "en" }) => {
 
     if (!token) {
       toast.error(L.serverNoToken);
-      return false;
+      return { ok: false, profileKey: "" };
     }
 
+    // normalize user shape
+    const u = user && typeof user === "object" ? user : null;
+
+    const id = String(u?.id ?? u?.userId ?? u?.user_id ?? u?.uid ?? "").trim();
+
+    const publicId = String(
+      u?.public_id ?? u?.publicId ?? u?.publicID ?? "",
+    ).trim();
+
+    const normalizedUser = u
+      ? {
+          ...u,
+          id: u?.id ?? u?.userId ?? u?.user_id ?? u?.uid,
+          public_id: publicId,
+        }
+      : null;
+
     localStorage.setItem("token", token);
-    if (user) localStorage.setItem("user", JSON.stringify(user));
+    if (normalizedUser)
+      localStorage.setItem("user", JSON.stringify(normalizedUser));
 
     window.dispatchEvent(new Event("auth_changed"));
-    return true;
+
+    const profileKey = publicId || id || "";
+    return { ok: true, profileKey };
   };
 
   const handleSubmit = async (e) => {
@@ -203,10 +223,16 @@ export const AuthView = ({ lang = "en" }) => {
           return;
         }
 
-        if (!saveAuth(data)) return;
+        const r = saveAuth(data);
+        if (!r.ok) return;
 
         toast.success(L.registered);
-        navigate("/", { replace: true });
+        navigate(
+          r.profileKey ? `/u/${encodeURIComponent(r.profileKey)}` : "/",
+          {
+            replace: true,
+          },
+        );
         return;
       }
 
@@ -225,10 +251,16 @@ export const AuthView = ({ lang = "en" }) => {
         return;
       }
 
-      if (!saveAuth(data)) return;
+      const r2 = saveAuth(data);
+      if (!r2.ok) return;
 
       toast.success(L.loggedIn);
-      navigate("/", { replace: true });
+      navigate(
+        r2.profileKey ? `/u/${encodeURIComponent(r2.profileKey)}` : "/",
+        {
+          replace: true,
+        },
+      );
     } catch (err) {
       console.error(err);
       toast.error(L.serverConnFail);
@@ -277,13 +309,13 @@ export const AuthView = ({ lang = "en" }) => {
                     autoComplete="name"
                     className={classNames(
                       "w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none",
-                      dir === "rtl" ? "pr-12" : "pl-12"
+                      dir === "rtl" ? "pr-12" : "pl-12",
                     )}
                   />
                   <UserPlus
                     className={classNames(
                       "absolute top-4 text-slate-400",
-                      dir === "rtl" ? "right-4" : "left-4"
+                      dir === "rtl" ? "right-4" : "left-4",
                     )}
                     size={20}
                   />
@@ -306,13 +338,13 @@ export const AuthView = ({ lang = "en" }) => {
                   inputMode={isLogin ? "text" : "email"}
                   className={classNames(
                     "w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none",
-                    dir === "rtl" ? "pr-12" : "pl-12"
+                    dir === "rtl" ? "pr-12" : "pl-12",
                   )}
                 />
                 <Mail
                   className={classNames(
                     "absolute top-4 text-slate-400",
-                    dir === "rtl" ? "right-4" : "left-4"
+                    dir === "rtl" ? "right-4" : "left-4",
                   )}
                   size={20}
                 />
@@ -333,13 +365,13 @@ export const AuthView = ({ lang = "en" }) => {
                   autoComplete={isLogin ? "current-password" : "new-password"}
                   className={classNames(
                     "w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none",
-                    dir === "rtl" ? "pr-12" : "pl-12"
+                    dir === "rtl" ? "pr-12" : "pl-12",
                   )}
                 />
                 <Lock
                   className={classNames(
                     "absolute top-4 text-slate-400",
-                    dir === "rtl" ? "right-4" : "left-4"
+                    dir === "rtl" ? "right-4" : "left-4",
                   )}
                   size={20}
                 />

@@ -29,7 +29,7 @@ const uniq = (arr) => Array.from(new Set((arr || []).filter(Boolean)));
 const absMediaUrl = (API_BASE, u) => {
   const s = String(u || "").trim();
   if (!s) return "";
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+  if (/^(data:|blob:|https?:\/\/)/i.test(s)) return s; // ✅ FIX
   return `${API_BASE}${s.startsWith("/") ? "" : "/"}${s}`;
 };
 

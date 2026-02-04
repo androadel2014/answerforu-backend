@@ -1,4 +1,11 @@
 // src/modules/social-profile.routes.js
+const multer = require("multer");
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 6 * 1024 * 1024 }, // 6MB
+});
+
 const crypto = require("crypto");
 
 module.exports = function registerSocialProfileRoutes({
@@ -16,6 +23,25 @@ module.exports = function registerSocialProfileRoutes({
   deleteFeedPostOwnedBy,
   parseAnyPostId,
 }) {
+  function hasColumn(table, col, cb) {
+    dbAll(`PRAGMA table_info(${table})`, [], (e, rows) => {
+      if (e) return cb(false);
+      const ok = (rows || []).some(
+        (r) =>
+          String(r?.name || "").toLowerCase() === String(col).toLowerCase(),
+      );
+      cb(ok);
+    });
+  }
+
+  function addColumnIfMissing(table, colDef) {
+    const col = String(colDef).trim().split(/\s+/)[0]; // first token = column name
+    hasColumn(table, col, (exists) => {
+      if (exists) return;
+      dbRun(`ALTER TABLE ${table} ADD COLUMN ${colDef}`, [], () => {});
+    });
+  }
+
   /* =========================
      ✅ Ensure users.public_id (non-guessable)
   ========================= */
@@ -25,9 +51,8 @@ module.exports = function registerSocialProfileRoutes({
   };
 
   function ensureUsersPublicIdSchema() {
-    try {
-      dbRun(`ALTER TABLE users ADD COLUMN public_id TEXT`, [], () => {});
-    } catch {}
+    addColumnIfMissing("users", "public_id TEXT");
+
     try {
       dbRun(
         `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_public_id ON users(public_id)`,
@@ -344,8 +369,6 @@ module.exports = function registerSocialProfileRoutes({
       const body = req.body || {};
       const username = safeTrim(body.username);
       const display_name = safeTrim(body.display_name);
-      const avatar_url = safeUrl(body.avatar_url);
-      const cover_url = safeUrl(body.cover_url);
       const bio = safeTrim(body.bio);
       const location = safeTrim(body.location);
       const phone = safeTrim(body.phone);
@@ -359,8 +382,6 @@ module.exports = function registerSocialProfileRoutes({
           SET
             username = COALESCE(?, username),
             display_name = COALESCE(?, display_name),
-            avatar_url = COALESCE(?, avatar_url),
-            cover_url = COALESCE(?, cover_url),
             bio = COALESCE(?, bio),
             location = COALESCE(?, location),
             phone = COALESCE(?, phone),
@@ -372,8 +393,6 @@ module.exports = function registerSocialProfileRoutes({
           [
             username || null,
             display_name || null,
-            avatar_url || null,
-            cover_url || null,
             bio || null,
             location || null,
             phone || null,
@@ -420,44 +439,102 @@ module.exports = function registerSocialProfileRoutes({
     });
   });
 
-  // ✅ update ONLY avatar (set/change)
-  app.put("/api/profile/me/avatar", authRequired, (req, res) => {
+  /* =========================
+     ✅ Avatar/Cover Upload (FIX 404)
+     Frontend sends POST FormData: avatar/cover
+     Backend currently supports PUT with avatar_url/cover_url only
+     -> Add POST + aliases + keep PUT/DELETE
+  ========================= */
+
+  addColumnIfMissing("user_profile", "avatar_url TEXT");
+  addColumnIfMissing("user_profile", "cover_url TEXT");
+
+  // ✅ simplistic local upload (base64 data URL) - no external libs
+  // NOTE: This keeps your current DB schema: avatar_url/cover_url is TEXT
+  function readFileAsDataUrl(file) {
+    if (!file) return null;
+
+    // multer usually: { buffer, mimetype }
+    if (file.buffer && file.mimetype) {
+      const b64 = file.buffer.toString("base64");
+      return `data:${file.mimetype};base64,${b64}`;
+    }
+
+    // in case you send raw string (rare)
+    if (typeof file === "string") return file;
+
+    return null;
+  }
+
+  // ✅ accept: (1) JSON body avatar_url/cover_url (PUT)
+  //         (2) multipart/form-data "avatar" / "cover" (POST)
+  function pickAvatarUrlFromReq(req) {
+    const urlFromBody = safeUrl(req.body?.avatar_url);
+    if (urlFromBody) return urlFromBody;
+
+    const f = req.file || (req.files && (req.files.avatar || req.files.cover));
+    if (f && Array.isArray(f)) return readFileAsDataUrl(f[0]);
+    return readFileAsDataUrl(f);
+  }
+
+  function pickCoverUrlFromReq(req) {
+    const urlFromBody = safeUrl(req.body?.cover_url);
+    if (urlFromBody) return urlFromBody;
+
+    const f = req.file || (req.files && (req.files.cover || req.files.avatar));
+    if (f && Array.isArray(f)) return readFileAsDataUrl(f[0]);
+    return readFileAsDataUrl(f);
+  }
+
+  function respondMeProfile(userId, res, failMsg) {
+    dbGet(
+      `
+      SELECT up.*, u.public_id AS public_id
+      FROM user_profile up
+      LEFT JOIN users u ON u.id = up.user_id
+      WHERE up.user_id = ?
+      `,
+      [userId],
+      (e2, p) => {
+        if (e2 || !p)
+          return res.status(500).json({ message: failMsg || "Failed" });
+        res.json({
+          ok: true,
+          profile: p,
+          avatar_url: p.avatar_url || "",
+          cover_url: p.cover_url || "",
+        });
+      },
+    );
+  }
+
+  // -------------------------
+  // ✅ Avatar handlers
+  // -------------------------
+  function avatarSetCore(req, res) {
     const userId = req.user.id;
-    const avatar_url = safeUrl(req.body?.avatar_url);
 
     ensureProfileRow(userId, (e0) => {
       if (e0) return res.status(500).json({ message: "Failed" });
 
+      const avatar_url = pickAvatarUrlFromReq(req);
       if (!avatar_url)
-        return res.status(400).json({ message: "Missing avatar_url" });
+        return res
+          .status(400)
+          .json({ message: "Missing avatar (file) or avatar_url" });
 
       dbRun(
         `UPDATE user_profile SET avatar_url = ?, updated_at = datetime('now') WHERE user_id = ?`,
         [avatar_url, userId],
         function (e1) {
           if (e1) return res.status(500).json({ message: "Update failed" });
-
-          dbGet(
-            `
-            SELECT up.*, u.public_id AS public_id
-            FROM user_profile up
-            LEFT JOIN users u ON u.id = up.user_id
-            WHERE up.user_id = ?
-            `,
-            [userId],
-            (e2, p) => {
-              if (e2 || !p)
-                return res.status(500).json({ message: "Update failed" });
-              res.json({ ok: true, profile: p });
-            },
-          );
+          return respondMeProfile(userId, res, "Update failed");
         },
       );
     });
-  });
+  }
 
-  // ✅ delete avatar (remove)
-  app.delete("/api/profile/me/avatar", authRequired, (req, res) => {
+  function avatarDeleteCore(req, res) {
     const userId = req.user.id;
 
     ensureProfileRow(userId, (e0) => {
@@ -468,64 +545,39 @@ module.exports = function registerSocialProfileRoutes({
         [userId],
         function (e1) {
           if (e1) return res.status(500).json({ message: "Delete failed" });
-
-          dbGet(
-            `
-            SELECT up.*, u.public_id AS public_id
-            FROM user_profile up
-            LEFT JOIN users u ON u.id = up.user_id
-            WHERE up.user_id = ?
-            `,
-            [userId],
-            (e2, p) => {
-              if (e2 || !p)
-                return res.status(500).json({ message: "Delete failed" });
-              res.json({ ok: true, profile: p });
-            },
-          );
+          return respondMeProfile(userId, res, "Delete failed");
         },
       );
     });
-  });
+  }
 
-  // ✅ update ONLY cover (set/change)
-  app.put("/api/profile/me/cover", authRequired, (req, res) => {
+  // -------------------------
+  // ✅ Cover handlers
+  // -------------------------
+  function coverSetCore(req, res) {
     const userId = req.user.id;
-    const cover_url = safeUrl(req.body?.cover_url);
 
     ensureProfileRow(userId, (e0) => {
       if (e0) return res.status(500).json({ message: "Failed" });
 
+      const cover_url = pickCoverUrlFromReq(req);
       if (!cover_url)
-        return res.status(400).json({ message: "Missing cover_url" });
+        return res
+          .status(400)
+          .json({ message: "Missing cover (file) or cover_url" });
 
       dbRun(
         `UPDATE user_profile SET cover_url = ?, updated_at = datetime('now') WHERE user_id = ?`,
         [cover_url, userId],
         function (e1) {
           if (e1) return res.status(500).json({ message: "Update failed" });
-
-          dbGet(
-            `
-            SELECT up.*, u.public_id AS public_id
-            FROM user_profile up
-            LEFT JOIN users u ON u.id = up.user_id
-            WHERE up.user_id = ?
-            `,
-            [userId],
-            (e2, p) => {
-              if (e2 || !p)
-                return res.status(500).json({ message: "Update failed" });
-              res.json({ ok: true, profile: p });
-            },
-          );
+          return respondMeProfile(userId, res, "Update failed");
         },
       );
     });
-  });
+  }
 
-  // ✅ delete cover (remove)
-  app.delete("/api/profile/me/cover", authRequired, (req, res) => {
+  function coverDeleteCore(req, res) {
     const userId = req.user.id;
 
     ensureProfileRow(userId, (e0) => {
@@ -536,24 +588,58 @@ module.exports = function registerSocialProfileRoutes({
         [userId],
         function (e1) {
           if (e1) return res.status(500).json({ message: "Delete failed" });
-
-          dbGet(
-            `
-            SELECT up.*, u.public_id AS public_id
-            FROM user_profile up
-            LEFT JOIN users u ON u.id = up.user_id
-            WHERE up.user_id = ?
-            `,
-            [userId],
-            (e2, p) => {
-              if (e2 || !p)
-                return res.status(500).json({ message: "Delete failed" });
-              res.json({ ok: true, profile: p });
-            },
-          );
+          return respondMeProfile(userId, res, "Delete failed");
         },
       );
     });
+  }
+
+  // ✅ IMPORTANT: Frontend calls POST for upload
+  // We don't assume multer exists. If you already have upload middleware, keep it.
+  // If you have: const upload = ...  then wrap: app.post(path, authRequired, upload.single("avatar"), avatarSetCore)
+  // For now, just accept JSON (avatar_url/cover_url) or any body parser that provides req.file/req.files.
+
+  // ---- canonical routes ----
+
+  app.put("/api/profile/me/avatar", authRequired, avatarSetCore);
+  app.delete("/api/profile/me/avatar", authRequired, avatarDeleteCore);
+
+  app.post(
+    "/api/profile/me/avatar",
+    authRequired,
+    upload.single("avatar"),
+    avatarSetCore,
+  );
+
+  app.post(
+    "/api/profile/me/cover",
+    authRequired,
+    upload.single("cover"),
+    coverSetCore,
+  );
+
+  app.put("/api/profile/me/cover", authRequired, coverSetCore);
+  app.delete("/api/profile/me/cover", authRequired, coverDeleteCore);
+
+  // ---- aliases (your frontend tries these) ----
+  [
+    "/api/profile/avatar",
+    "/api/me/profile/avatar",
+    "/api/user/profile/me/avatar",
+  ].forEach((p) => {
+    app.post(p, authRequired, upload.single("avatar"), avatarSetCore);
+    app.put(p, authRequired, avatarSetCore);
+    app.delete(p, authRequired, avatarDeleteCore);
+  });
+
+  [
+    "/api/profile/cover",
+    "/api/me/profile/cover",
+    "/api/user/profile/me/cover",
+  ].forEach((p) => {
+    app.post(p, authRequired, upload.single("cover"), coverSetCore);
+    app.put(p, authRequired, coverSetCore);
+    app.delete(p, authRequired, coverDeleteCore);
   });
 
   // follow / unfollow (accept numeric OR public_id OR username)
@@ -1229,9 +1315,43 @@ module.exports = function registerSocialProfileRoutes({
     });
   });
 
-  // optional: same create via /api/u/:userId/reviews (public id)
+  // ✅ same create via /api/u/:userId/reviews (public id OR username OR numeric)
   app.post("/api/u/:userId/reviews", authRequired, (req, res) => {
-    req.params.userId = req.params.userId;
-    return app._router.handle(req, res, () => {}); // no-op fallback
+    // نفس منطق /api/profile/:userId/reviews
+    resolveUserKey(req.params.userId, (eResolve, userId) => {
+      if (eResolve) {
+        const st = eResolve?.status || 400;
+        return res
+          .status(st)
+          .json({ message: eResolve.message || "Bad userId" });
+      }
+
+      if (userId === req.user.id)
+        return res.status(400).json({ message: "You cannot review yourself" });
+
+      const rating = Number(req.body?.rating);
+      const comment = safeTrim(req.body?.comment);
+
+      if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+        return res.status(400).json({ message: "Rating must be 1..5" });
+      }
+      if (!comment) return res.status(400).json({ message: "Empty comment" });
+
+      dbRun(
+        `
+        INSERT INTO reviews (user_id, author_id, rating, comment)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id, author_id) DO UPDATE SET
+          rating = excluded.rating,
+          comment = excluded.comment,
+          created_at = datetime('now')
+        `,
+        [userId, req.user.id, Math.round(rating), comment],
+        function (err) {
+          if (err) return res.status(500).json({ message: "Review failed" });
+          res.json({ ok: true });
+        },
+      );
+    });
   });
 };

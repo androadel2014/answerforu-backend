@@ -53,7 +53,10 @@ const getInitials = (name = "") => {
 const absUrl = (u) => {
   const s = String(u || "").trim();
   if (!s) return "";
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+
+  // ✅ IMPORTANT: do not prefix data/blob/http urls
+  if (/^(data:|blob:|https?:\/\/)/i.test(s)) return s;
+
   return `${API_BASE}${s.startsWith("/") ? "" : "/"}${s}`;
 };
 
@@ -84,7 +87,7 @@ export default function PostComposer({ onPosted }) {
   const isLoggedIn = !!token;
   const authHeaders = useMemo(
     () => (token ? { Authorization: `Bearer ${token}` } : {}),
-    [token]
+    [token],
   );
 
   // ✅ بدل ما نعتمد على localStorage فقط
@@ -135,7 +138,7 @@ export default function PostComposer({ onPosted }) {
     me?.profile_image ||
     "";
 
-  const avatarSrc = absUrl(avatarRaw);
+  const avatarSrc = avatarRaw ? absUrl(avatarRaw) : "";
 
   const [avatarOk, setAvatarOk] = useState(true);
   useEffect(() => {
@@ -359,13 +362,13 @@ export default function PostComposer({ onPosted }) {
               <span
                 className={classNames(
                   "inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs border",
-                  getCategory(category).badge
+                  getCategory(category).badge,
                 )}
               >
                 <span
                   className={classNames(
                     "w-2 h-2 rounded-full",
-                    getCategory(category).dot
+                    getCategory(category).dot,
                   )}
                 />
                 {getCategory(category).label}
@@ -380,7 +383,7 @@ export default function PostComposer({ onPosted }) {
                 "rounded-xl px-5 py-2 font-semibold text-sm shadow-sm transition",
                 posting
                   ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                  : "bg-gray-900 text-white hover:bg-black"
+                  : "bg-gray-900 text-white hover:bg-black",
               )}
             >
               {posting ? "Posting..." : "Post"}

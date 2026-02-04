@@ -40,8 +40,8 @@ export const tt = (lang, key) => {
       lang === "ar"
         ? "متأكد إنك عايز تحذف؟"
         : lang === "es"
-        ? "¿Seguro que deseas eliminar?"
-        : "Are you sure you want to delete?",
+          ? "¿Seguro que deseas eliminar?"
+          : "Are you sure you want to delete?",
     listings:
       lang === "ar" ? "الإعلانات" : lang === "es" ? "Anuncios" : "Listings",
   };
@@ -237,7 +237,7 @@ export const toastConfirm = ({ lang = "en", title, confirmText } = {}) =>
           </div>
         </div>
       ),
-      { duration: 999999 }
+      { duration: 999999 },
     );
   });
 
@@ -363,8 +363,14 @@ export function Modal({ title, open, onClose, children, footer }) {
 export const absUrl = (API_BASE, u) => {
   const s = String(u || "").trim();
   if (!s) return "";
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
-  return `${API_BASE}${s.startsWith("/") ? "" : "/"}${s}`;
+
+  // ✅ never prefix data/blob/http urls
+  if (/^(data:|blob:|https?:\/\/)/i.test(s)) return s;
+
+  const base = String(API_BASE || "").replace(/\/$/, "");
+  if (!base) return s;
+
+  return `${base}${s.startsWith("/") ? "" : "/"}${s}`;
 };
 
 // =========================
@@ -433,12 +439,7 @@ export const normalizePostForMedia = (API_BASE, p) => {
     return [];
   };
 
-  const abs = (u) => {
-    const s = String(u || "").trim();
-    if (!s) return "";
-    if (s.startsWith("http://") || s.startsWith("https://")) return s;
-    return `${API_BASE}${s.startsWith("/") ? "" : "/"}${s}`;
-  };
+  const abs = (u) => absUrl(API_BASE, u);
 
   // ✅ collect ALL possible media keys coming from different endpoints
   let media = [
@@ -622,7 +623,7 @@ export function TabPill({ active, onClick, icon, label }) {
         "px-3 py-2 rounded-xl border flex items-center gap-2 text-sm transition",
         active
           ? "bg-black text-white border-black"
-          : "bg-white hover:bg-gray-50"
+          : "bg-white hover:bg-gray-50",
       )}
     >
       {icon}
@@ -802,7 +803,7 @@ export function CommentNode({
                 }
                 className={classNames(
                   "inline-flex items-center gap-1 hover:text-gray-900",
-                  liked ? "text-gray-900 font-semibold" : ""
+                  liked ? "text-gray-900 font-semibold" : "",
                 )}
               >
                 <ThumbsUp size={14} />
@@ -966,8 +967,8 @@ export function ServicesTab({ lang, items, isMe, onDelete }) {
           priceType === "fixed"
             ? `Fixed${priceValue ? ` • $${priceValue}` : ""}`
             : priceType === "starting_at"
-            ? `Starting at${priceValue ? ` • $${priceValue}` : ""}`
-            : `Negotiable${priceValue ? ` • $${priceValue}` : ""}`;
+              ? `Starting at${priceValue ? ` • $${priceValue}` : ""}`
+              : `Negotiable${priceValue ? ` • $${priceValue}` : ""}`;
 
         const location =
           String(s?.location || s?.city || "").trim() ||
@@ -1097,7 +1098,11 @@ export function ProductsTab({ lang, items, isMe, onDelete }) {
             className="text-left rounded-2xl border bg-white hover:bg-gray-50 transition overflow-hidden"
           >
             {img ? (
-              <img src={img} alt="" className="w-full h-44 object-cover" />
+              <img
+                src={absUrl(getAPIBase(), img)}
+                alt=""
+                className="w-full h-44 object-cover"
+              />
             ) : (
               <div className="w-full h-44 bg-gray-100" />
             )}

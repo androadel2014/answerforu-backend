@@ -30,7 +30,7 @@ const getToken = () => localStorage.getItem("token") || "";
 function absMedia(u) {
   const s = String(u || "").trim();
   if (!s) return "";
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+  if (/^(data:|blob:|https?:\/\/)/i.test(s)) return s; // ✅ FIX
   return `${API_BASE}${s.startsWith("/") ? "" : "/"}${s}`;
 }
 
@@ -95,6 +95,49 @@ function useInterval(fn, delay) {
   }, [delay]);
 }
 
+/* =========================
+   ✅ profile link helper (non-sequential)
+   - prefers username/handle/slug/public_id
+   - fallback to numeric id (keeps old working)
+========================= */
+function pickUserKey(other) {
+  const o = other || {};
+  const s = String(
+    o?.username ??
+      o?.user_name ??
+      o?.userName ??
+      o?.handle ??
+      o?.slug ??
+      o?.public_id ??
+      o?.publicId ??
+      o?.uid ??
+      "",
+  ).trim();
+  if (!s) return "";
+  return s.startsWith("@") ? s.slice(1) : s;
+}
+
+function buildProfileHref(other) {
+  const key = pickUserKey(other);
+  if (key) return `/u/${encodeURIComponent(key)}`;
+
+  const id = Number(
+    other?.id ?? other?.user_id ?? other?.userId ?? other?.owner_id ?? 0,
+  );
+  if (Number.isFinite(id) && id > 0) return `/u/${id}`;
+  return "";
+}
+
+function enrichThread(t) {
+  const th = t || {};
+  const other = th?.other || {};
+  const href = buildProfileHref(other);
+  return {
+    ...th,
+    other: { ...other, profile_href: href || other?.profile_href || "" },
+  };
+}
+
 function Bubble({ mine, text, at, dir }) {
   return (
     <div className={cn("w-full flex", mine ? "justify-end" : "justify-start")}>
@@ -103,7 +146,7 @@ function Bubble({ mine, text, at, dir }) {
           "max-w-[78%] rounded-2xl px-3 py-2 text-sm leading-relaxed",
           mine
             ? "bg-slate-900 text-white"
-            : "bg-white text-slate-900 border border-slate-200"
+            : "bg-white text-slate-900 border border-slate-200",
         )}
         dir={dir}
       >
@@ -112,7 +155,7 @@ function Bubble({ mine, text, at, dir }) {
           <div
             className={cn(
               "mt-1 text-[11px] opacity-70",
-              mine ? "text-white/80" : "text-slate-500"
+              mine ? "text-white/80" : "text-slate-500",
             )}
           >
             {at}
@@ -277,7 +320,7 @@ function ChatWindow({
         <div
           className={cn(
             "h-12 flex items-center justify-between bg-slate-900 text-white",
-            headerSidePadding
+            headerSidePadding,
           )}
           dir={dir}
         >
@@ -371,7 +414,7 @@ function ChatWindow({
                 "h-10 w-10 rounded-2xl flex items-center justify-center border",
                 sending || !String(draft || "").trim()
                   ? "bg-slate-100 text-slate-400 border-slate-200"
-                  : "bg-slate-900 text-white border-slate-900 hover:opacity-95"
+                  : "bg-slate-900 text-white border-slate-900 hover:opacity-95",
               )}
               title="Send"
             >
@@ -394,7 +437,8 @@ function ChatInbox({ lang, open, onClose, onOpenThread, dockSide = "right" }) {
   const load = async () => {
     try {
       const data = await apiGet(`/api/chat/threads`);
-      setThreads(Array.isArray(data?.items) ? data.items : []);
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setThreads(items.map(enrichThread));
       setLoading(false);
     } catch {
       setLoading(false);
@@ -416,7 +460,7 @@ function ChatInbox({ lang, open, onClose, onOpenThread, dockSide = "right" }) {
     return threads.filter((t) =>
       String(t?.other?.name || "")
         .toLowerCase()
-        .includes(s)
+        .includes(s),
     );
   }, [threads, q]);
 
@@ -432,7 +476,7 @@ function ChatInbox({ lang, open, onClose, onOpenThread, dockSide = "right" }) {
       <div
         className={cn(
           "fixed bottom-[84px] md:bottom-[96px] w-[360px] max-w-[92vw] rounded-2xl overflow-hidden bg-white border border-slate-200 shadow-[0_20px_60px_rgba(0,0,0,0.18)]",
-          dockSide === "right" ? "right-4" : "left-4"
+          dockSide === "right" ? "right-4" : "left-4",
         )}
       >
         <div
@@ -478,7 +522,7 @@ function ChatInbox({ lang, open, onClose, onOpenThread, dockSide = "right" }) {
                   <button
                     key={t.id}
                     className="w-full text-left p-3 hover:bg-slate-50 flex items-center gap-3"
-                    onClick={() => onOpenThread(t)}
+                    onClick={() => onOpenThread(enrichThread(t))}
                   >
                     <div className="h-10 w-10 rounded-full bg-slate-900 text-white flex items-center justify-center overflow-hidden">
                       {otherAvatar ? (
@@ -632,7 +676,7 @@ function MobileChatBody({ lang, thread, meId, onRead }) {
               "h-10 w-10 rounded-2xl flex items-center justify-center border",
               sending || !String(draft || "").trim()
                 ? "bg-slate-100 text-slate-400 border-slate-200"
-                : "bg-slate-900 text-white border-slate-900 hover:opacity-95"
+                : "bg-slate-900 text-white border-slate-900 hover:opacity-95",
             )}
             title="Send"
           >
@@ -695,7 +739,7 @@ export default function ChatDock({
         minute: "2-digit",
       });
 
-      setToast({ thread, atLabel });
+      setToast({ thread: enrichThread(thread), atLabel });
 
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       toastTimerRef.current = setTimeout(() => {
@@ -703,7 +747,7 @@ export default function ChatDock({
         toastTimerRef.current = null;
       }, 4500);
     },
-    [inboxOpen, openThreads, minimized]
+    [inboxOpen, openThreads, minimized],
   );
 
   const mergeThreads = useCallback((freshItems) => {
@@ -714,7 +758,7 @@ export default function ChatDock({
       if (!prev.length) return prev;
       return prev.map((t) => {
         const found = list.find((x) => String(x.id) === String(t.id));
-        return found ? { ...t, ...found } : t;
+        return found ? enrichThread({ ...t, ...found }) : t;
       });
     });
   }, []);
@@ -722,8 +766,8 @@ export default function ChatDock({
   const markThreadRead = useCallback((id) => {
     setOpenThreads((prev) =>
       prev.map((t) =>
-        String(t.id) === String(id) ? { ...t, unread_count: 0 } : t
-      )
+        String(t.id) === String(id) ? { ...t, unread_count: 0 } : t,
+      ),
     );
   }, []);
 
@@ -738,14 +782,15 @@ export default function ChatDock({
     try {
       const t = await apiGet(`/api/chat/threads`);
       const items = Array.isArray(t?.items) ? t.items : [];
-      mergeThreads(items);
+      const enrichedItems = items.map(enrichThread);
+      mergeThreads(enrichedItems);
 
       const prevMap = prevMapRef.current || new Map();
       const nextMap = new Map();
 
       let candidate = null;
 
-      for (const th of items) {
+      for (const th of enrichedItems) {
         const id = String(th?.id || "");
         const unread = Number(th?.unread_count || 0) || 0;
         const last = String(th?.last_message || "");
@@ -780,24 +825,25 @@ export default function ChatDock({
 
   const openThread = useCallback(
     (t) => {
-      if (!t?.id) return;
+      const th = enrichThread(t);
+      if (!th?.id) return;
 
       hideToast();
       setInboxOpen(false);
 
       setOpenThreads((prev) => {
-        const exists = prev.some((x) => String(x.id) === String(t.id));
+        const exists = prev.some((x) => String(x.id) === String(th.id));
         if (exists) {
           return prev.map((x) =>
-            String(x.id) === String(t.id) ? { ...x, ...t } : x
+            String(x.id) === String(th.id) ? { ...x, ...th } : x,
           );
         }
-        return [t, ...prev].slice(0, maxOpen);
+        return [th, ...prev].slice(0, maxOpen);
       });
 
-      setMinimized((prev) => prev.filter((id) => String(id) !== String(t.id)));
+      setMinimized((prev) => prev.filter((id) => String(id) !== String(th.id)));
     },
-    [maxOpen, hideToast]
+    [maxOpen, hideToast],
   );
 
   useEffect(() => {
@@ -828,7 +874,7 @@ export default function ChatDock({
   };
 
   const visibleThreads = openThreads.filter(
-    (t) => !minimized.some((id) => String(id) === String(t.id))
+    (t) => !minimized.some((id) => String(id) === String(t.id)),
   );
 
   const baseOffset = 18;
@@ -839,7 +885,7 @@ export default function ChatDock({
     <button
       className={cn(
         "fixed z-[99970] bottom-[92px] md:bottom-[22px] h-12 w-12 rounded-2xl shadow-lg flex items-center justify-center",
-        "bg-slate-900 text-white hover:opacity-95"
+        "bg-slate-900 text-white hover:opacity-95",
       )}
       style={dockSide === "right" ? { right: 18 } : { left: 18 }}
       onClick={() => {
@@ -862,7 +908,7 @@ export default function ChatDock({
       <div
         className={cn(
           "fixed z-[99975] bottom-[92px] md:bottom-[22px] h-12 flex items-center gap-2",
-          dockSide === "right" ? "right-[78px]" : "left-[78px]"
+          dockSide === "right" ? "right-[78px]" : "left-[78px]",
         )}
       >
         {minimized.slice(0, 6).map((id) => {
