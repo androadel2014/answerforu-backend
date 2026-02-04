@@ -9,6 +9,7 @@ const path = require("path");
 const fs = require("fs");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const registerUploadRoutes = require("./src/modules/uploads.routes");
 require("dotenv").config();
 // const registerAirports = require("./src/modules/airports");
 
@@ -466,6 +467,11 @@ registerCvRoutes({
   safeTrim,
   safeJsonParse,
   toInt,
+});
+
+registerUploadRoutes({
+  app,
+  authRequired,
 });
 
 /* =====================

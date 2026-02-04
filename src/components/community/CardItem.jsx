@@ -1,6 +1,5 @@
 // src/components/community/CardItem.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 
 import {
   User,
@@ -113,6 +112,161 @@ function isNewByDate(date, hours = 48) {
   return diffMs >= 0 && diffMs <= hours * 60 * 60 * 1000;
 }
 
+function absMedia(u) {
+  const s = String(u || "").trim();
+  if (!s) return "";
+  if (/^(data:|blob:|https?:\/\/)/i.test(s)) return s;
+  return `${API_BASE}${s.startsWith("/") ? "" : "/"}${s}`;
+}
+
+function safeJsonArray(v) {
+  try {
+    if (Array.isArray(v)) return v;
+    const s = String(v || "").trim();
+    if (!s) return [];
+    const parsed = JSON.parse(s);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeImages(it) {
+  const out = [];
+
+  // common single fields
+  const singleCandidates = [
+    it.image_url,
+    it.imageUrl,
+    it.photo_url,
+    it.photoUrl,
+    it.cover_url,
+    it.coverUrl,
+    it.media_url,
+    it.mediaUrl,
+    it.avatar_url,
+    it.avatarUrl,
+  ];
+  for (const c of singleCandidates) {
+    const u = absMedia(c);
+    if (u) out.push(u);
+  }
+
+  // array fields
+  const arrCandidates = [
+    it.images,
+    it.photos,
+    it.media,
+    it.media_urls,
+    it.mediaUrls,
+    it.image_urls,
+    it.imageUrls,
+    it.gallery,
+  ];
+
+  for (const c of arrCandidates) {
+    const arr = Array.isArray(c) ? c : safeJsonArray(c);
+    for (const x of arr) {
+      const u = absMedia(x);
+      if (u) out.push(u);
+    }
+  }
+
+  // de-dupe
+  const uniq = [];
+  const seen = new Set();
+  for (const u of out) {
+    const key = String(u || "").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    uniq.push(key);
+  }
+
+  return uniq.slice(0, 6);
+}
+
+/* =========================
+   Placeholder (SVG data-uri)
+========================= */
+
+function escXml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function placeholderSvgDataUri({ typeKey, title, subtitle }) {
+  const label = escXml(title || "Listing");
+  const sub = escXml(subtitle || "");
+
+  // simple per-type emoji icon (works everywhere)
+  const iconByType = {
+    places: "📍",
+    groups: "👥",
+    services: "🛠️",
+    jobs: "💼",
+    housing: "🏠",
+    products: "📦",
+    all: "🧩",
+  };
+  const ico = escXml(iconByType[typeKey] || "🧾");
+
+  const svg = `
+  <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+    <defs>
+      <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#f8fafc"/>
+        <stop offset="55%" stop-color="#eef2ff"/>
+        <stop offset="100%" stop-color="#ecfeff"/>
+      </linearGradient>
+      <filter id="s" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#0f172a" flood-opacity="0.12"/>
+      </filter>
+    </defs>
+
+    <rect width="1200" height="675" fill="url(#g)"/>
+    <circle cx="150" cy="120" r="110" fill="#e2e8f0"/>
+    <circle cx="1060" cy="560" r="160" fill="#e0e7ff"/>
+    <circle cx="980" cy="140" r="90" fill="#cffafe"/>
+
+    <g filter="url(#s)">
+      <rect x="80" y="120" width="1040" height="435" rx="34" fill="#ffffff"/>
+    </g>
+
+    <text x="135" y="270" font-size="74" font-family="Segoe UI, Arial, sans-serif"> ${ico} </text>
+
+    <text x="220" y="260" font-size="56" font-weight="800" fill="#0f172a"
+      font-family="Segoe UI, Arial, sans-serif">
+      ${label}
+    </text>
+
+    ${
+      sub
+        ? `<text x="220" y="318" font-size="28" font-weight="600" fill="#475569"
+      font-family="Segoe UI, Arial, sans-serif">
+      ${sub}
+    </text>`
+        : ""
+    }
+
+    <g>
+      <rect x="220" y="360" width="720" height="14" rx="7" fill="#e2e8f0"/>
+      <rect x="220" y="392" width="560" height="14" rx="7" fill="#e2e8f0"/>
+      <rect x="220" y="424" width="640" height="14" rx="7" fill="#e2e8f0"/>
+    </g>
+
+    <text x="220" y="520" font-size="22" font-weight="700" fill="#64748b"
+      font-family="Segoe UI, Arial, sans-serif">
+      No images uploaded yet
+    </text>
+  </svg>`.trim();
+
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 /* =========================
    i18n
 ========================= */
@@ -144,6 +298,7 @@ const UI = {
     moAgo: (n) => `منذ ${n} شهر`,
     yAgo: (n) => `منذ ${n} سنة`,
     ratingNew: "جديد",
+    noImages: "لسه مفيش صور",
   },
   en: {
     listing: "Listing",
@@ -169,6 +324,7 @@ const UI = {
     moAgo: (n) => `${n}mo ago`,
     yAgo: (n) => `${n}y ago`,
     ratingNew: "New",
+    noImages: "No images yet",
   },
   es: {
     listing: "Anuncio",
@@ -194,6 +350,7 @@ const UI = {
     moAgo: (n) => `hace ${n} mes`,
     yAgo: (n) => `hace ${n} año`,
     ratingNew: "Nuevo",
+    noImages: "Sin imágenes todavía",
   },
 };
 
@@ -480,7 +637,6 @@ function CardBanner({
    ✅ CardItem
 ========================= */
 const OWNER_NAME_CACHE = new Map(); // ownerId -> name
-const OWNER_KEY_CACHE = new Map(); // ownerId -> (public_id or fallback numeric string)
 
 export function CardItem({
   tab,
@@ -492,7 +648,6 @@ export function CardItem({
   lang = "en",
 }) {
   const [open, setOpen] = useState(false);
-  const navigate = useNavigate();
 
   const t = UI[lang] || UI.en;
   const dir = getDir(lang);
@@ -547,6 +702,20 @@ export function CardItem({
   const createdAgo = timeAgo(createdAtVal, t);
   const isNew = isNewByDate(createdAtVal, 48);
 
+  // ✅ Images (always show at least a placeholder)
+  const images = useMemo(() => normalizeImages(it), [it]);
+  const cover = images[0] || "";
+  const fallbackCover = useMemo(() => {
+    const subtitle =
+      typeKey === "groups" ? it.platform || it.topic || "" : it.category || "";
+    return placeholderSvgDataUri({
+      typeKey,
+      title: titleText,
+      subtitle: subtitle || t.noImages,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typeKey, titleText, it?.platform, it?.topic, it?.category, lang]);
+
   // ✅ Ownership (show actions ONLY for owner)
   const me = useMemo(() => {
     try {
@@ -591,26 +760,12 @@ export function CardItem({
     return String(cached || initialOwnerName || "").trim();
   });
 
-  const [ownerKey, setOwnerKey] = useState(() => {
-    const cached = OWNER_KEY_CACHE.get(ownerId);
-    return String(cached || (ownerId ? String(ownerId) : "") || "").trim();
-  });
-
   useEffect(() => {
     if (!ownerId) return;
 
-    const cachedKey = OWNER_KEY_CACHE.get(ownerId);
-    if (cachedKey) {
-      const v = String(cachedKey || "").trim();
-      if (v && v !== ownerKey) setOwnerKey(v);
-    } else {
-      const fallback = ownerId ? String(ownerId) : "";
-      if (fallback && fallback !== ownerKey) setOwnerKey(fallback);
-    }
-
-    const cachedName = OWNER_NAME_CACHE.get(ownerId);
-    if (cachedName) {
-      const v = String(cachedName || "").trim();
+    const cached = OWNER_NAME_CACHE.get(ownerId);
+    if (cached) {
+      const v = String(cached || "").trim();
       if (v && v !== ownerName) setOwnerName(v);
       return;
     }
@@ -619,45 +774,18 @@ export function CardItem({
     if (seed) {
       OWNER_NAME_CACHE.set(ownerId, seed);
       if (seed !== ownerName) setOwnerName(seed);
+      return;
     }
 
     let cancelled = false;
 
     (async () => {
       try {
-        let res = null;
-        let data = null;
-
-        try {
-          res = await fetch(`${API_BASE}/api/profile/${ownerId}`, {
-            headers: { "Content-Type": "application/json" },
-          });
-          data = await res.json().catch(() => ({}));
-        } catch {}
-
-        if (!res || !res.ok) {
-          try {
-            res = await fetch(`${API_BASE}/api/users/${ownerId}`, {
-              headers: { "Content-Type": "application/json" },
-            });
-            data = await res.json().catch(() => ({}));
-          } catch {
-            return;
-          }
-        }
-
-        if (!res || !res.ok) return;
+        const res = await fetch(`${API_BASE}/api/profile/${ownerId}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
 
         const src = data?.profile || data?.user_profile || data?.user || data;
-
-        const publicId =
-          src?.public_id ?? src?.publicId ?? data?.public_id ?? data?.publicId;
-
-        const finalKey = String(publicId || "").trim() || String(ownerId);
-
-        OWNER_KEY_CACHE.set(ownerId, finalKey);
-        if (!cancelled) setOwnerKey(finalKey);
-
         const name =
           src?.display_name ||
           src?.displayName ||
@@ -668,10 +796,10 @@ export function CardItem({
           "";
 
         const finalName = String(name || "").trim();
-        if (finalName) {
-          OWNER_NAME_CACHE.set(ownerId, finalName);
-          if (!cancelled) setOwnerName(finalName);
-        }
+        if (!finalName) return;
+
+        OWNER_NAME_CACHE.set(ownerId, finalName);
+        if (!cancelled) setOwnerName(finalName);
       } catch {}
     })();
 
@@ -707,13 +835,31 @@ export function CardItem({
         cardClickable ? "cursor-pointer" : "",
       )}
     >
-      <CardBanner
-        tab={tab === "all" ? it.type || "places" : tab}
-        placeCategory={it.category}
-        groupPlatform={it.platform}
-        subtitleRight={rightSubtitle}
-        lang={lang}
-      />
+      {/* ✅ Image strip (real image or placeholder) */}
+      <div className="w-full rounded-2xl overflow-hidden border border-gray-200 bg-gray-50">
+        <img
+          src={cover || fallbackCover}
+          alt={titleText}
+          className="w-full h-40 sm:h-44 object-cover"
+          loading="lazy"
+          onError={(e) => {
+            // force placeholder if image fails
+            if (e?.currentTarget?.src !== fallbackCover) {
+              e.currentTarget.src = fallbackCover;
+            }
+          }}
+        />
+      </div>
+
+      <div className="mt-3">
+        <CardBanner
+          tab={tab === "all" ? it.type || "places" : tab}
+          placeCategory={it.category}
+          groupPlatform={it.platform}
+          subtitleRight={rightSubtitle}
+          lang={lang}
+        />
+      </div>
 
       <div className="mt-4 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
@@ -741,15 +887,14 @@ export function CardItem({
                 </span>
               ) : null}
             </span>
+
             {ownerId ? (
               <button
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  const key = String(ownerKey || ownerId || "").trim();
-                  if (!key) return;
-                  navigate(`/u/${encodeURIComponent(key)}`);
+                  window.location.href = `/u/${ownerId}`;
                 }}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
                 title={ownerName || "—"}
